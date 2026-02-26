@@ -29,12 +29,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const userAgent = request.headers.get('user-agent') ?? undefined
 
   // Rate limit: 3 sightings per 15 minutes per IP (prevent spam)
-  const rl = await rateLimitCheck(`sightings:create:${ip ?? 'unknown'}`, 900, 3)
-  if (!rl.allowed) {
-    return NextResponse.json(
-      { success: false, error: { code: ErrorCodes.RATE_LIMIT_EXCEEDED, message: 'Too many sighting reports. Please wait before submitting again.' } },
-      { status: 429 }
-    )
+  // Fail-open: if Redis is unavailable, allow the request through
+  try {
+    const rl = await rateLimitCheck(`sightings:create:${ip ?? 'unknown'}`, 900, 3)
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { success: false, error: { code: ErrorCodes.RATE_LIMIT_EXCEEDED, message: 'Too many sighting reports. Please wait before submitting again.' } },
+        { status: 429 }
+      )
+    }
+  } catch (rlErr) {
+    logger.warn({ rlErr }, 'Sightings POST: rate limit check failed (Redis unavailable), allowing request')
   }
 
   // Optional auth — public can report anonymously

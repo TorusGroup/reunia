@@ -7,16 +7,13 @@ import type { NextRequest } from 'next/server'
 // =============================================================
 
 // Routes that require authentication
+// NOTE: /register-case and /admin/ingest are open during test mode (no auth system active yet)
 const PROTECTED_ROUTES = [
   '/dashboard',
   '/le-dashboard',
-  '/register-case',
-  '/api/v1/cases',
   '/api/v1/face',
   '/api/v1/alerts/broadcast',
-  '/api/v1/sightings',
-  '/api/v1/ingestion',
-  '/api/v1/admin',
+  '/api/v1/le',
 ]
 
 // Routes that should only be accessible to law_enforcement or admin
@@ -59,7 +56,7 @@ const SECURITY_HEADERS: Record<string, string> = {
     "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
-    "connect-src 'self' http://localhost:* https://api.reunia.org",
+    "connect-src 'self' http://localhost:* https://api.reunia.org https://*.railway.app",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

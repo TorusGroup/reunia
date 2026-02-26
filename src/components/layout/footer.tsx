@@ -55,7 +55,7 @@ export function Footer() {
             <ul className="space-y-2">
               {[
                 { label: 'Buscar', href: '/search' },
-                { label: 'Registrar Caso', href: '/dashboard' },
+                { label: 'Registrar Caso', href: '/register-case' },
                 { label: 'Reportar Avistamento', href: '/report-sighting' },
                 { label: 'Alertas', href: '/alerts' },
               ].map(({ label, href }) => (
@@ -77,23 +77,22 @@ export function Footer() {
               className="text-xs uppercase tracking-wider font-semibold mb-4"
               style={{ color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-body)' }}
             >
-              Institucional
+              Ajuda
             </h3>
             <ul className="space-y-2">
               {[
-                { label: 'Sobre', href: '/sobre' },
-                { label: 'Parcerias', href: '/parcerias' },
-                { label: 'Privacidade', href: '/privacidade' },
-                { label: 'Termos', href: '/termos' },
+                { label: 'CVV — 188', href: 'tel:188' },
+                { label: 'Disque 100', href: 'tel:100' },
+                { label: 'Emergência — 190', href: 'tel:190' },
               ].map(({ label, href }) => (
                 <li key={href}>
-                  <Link
+                  <a
                     href={href}
                     className="text-sm transition-colors"
                     style={{ color: 'rgba(255,255,255,0.6)' }}
                   >
                     {label}
-                  </Link>
+                  </a>
                 </li>
               ))}
             </ul>

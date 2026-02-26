@@ -8,61 +8,96 @@ import { CaseTimeline } from '@/components/cases/case-timeline'
 import { ShareButtons } from '@/components/cases/share-buttons'
 import type { CaseDetail } from '@/types/cases'
 import type { TimelineEvent } from '@/components/cases/case-timeline'
+import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
 
 // =============================================================
 // Case Detail Page — Public Route Group (Sprint 4, E5-S03)
-// Server Component — SSG possible once API is stable
+// Server Component — fetches real data from DB, falls back to notFound
 // =============================================================
 
 interface CaseDetailPageProps {
   params: Promise<{ id: string }>
 }
 
-// Mock data function — replace with real API call in Sprint 5
+// Real DB lookup with full relations
 async function getCaseDetail(id: string): Promise<CaseDetail | null> {
-  const MOCK_CASES: Record<string, CaseDetail> = {
-    '550e8400-e29b-41d4-a716-446655440001': {
-      id: '550e8400-e29b-41d4-a716-446655440001',
-      caseNumber: 'REUNIA-2026-000001',
-      caseType: 'missing',
-      status: 'active',
-      urgency: 'high',
-      reportedAt: '2026-02-24T00:00:00Z',
-      lastSeenAt: '2026-02-24T14:30:00Z',
-      lastSeenLocation: 'Av. Paulista, São Paulo, SP',
-      lastSeenCountry: 'BR',
-      source: 'platform',
-      dataQuality: 85,
-      circumstances: 'Saiu da escola sem aviso e não retornou para casa. Câmeras de segurança registraram a última imagem na saída da escola.',
-      consentGiven: true,
-      persons: [{
-        id: 'p1',
-        role: 'missing_child',
-        firstName: 'Maria',
-        lastName: 'Santos',
-        approximateAge: 8,
-        ageAtDisappearance: 8,
-        dateOfBirth: '2018-03-14',
-        gender: 'female',
-        heightCm: 122,
-        weightKg: 25,
-        hairColor: 'Preto',
-        hairLength: 'Médio',
-        eyeColor: 'Castanhos',
-        skinTone: 'Morena',
-        distinguishingMarks: 'Cicatriz pequena no queixo',
-        clothingDescription: 'Uniforme escolar azul e branco, mochila rosa',
-        nationality: ['BR'],
-        aliases: [],
-        languagesSpoken: ['Português'],
-        images: [],
-      }],
-      createdAt: '2026-02-24T00:00:00Z',
-      updatedAt: '2026-02-26T00:00:00Z',
-    },
-  }
+  try {
+    const c = await db.case.findUnique({
+      where: { id },
+      include: {
+        persons: {
+          include: {
+            images: { orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }] },
+          },
+        },
+      },
+    })
 
-  return MOCK_CASES[id] ?? null
+    if (!c) return null
+
+    return {
+      id: c.id,
+      caseNumber: c.caseNumber,
+      caseType: c.caseType as CaseDetail['caseType'],
+      status: c.status as CaseDetail['status'],
+      urgency: c.urgency as CaseDetail['urgency'],
+      reportedAt: c.reportedAt.toISOString(),
+      lastSeenAt: c.lastSeenAt?.toISOString(),
+      lastSeenLocation: c.lastSeenLocation ?? undefined,
+      lastSeenCountry: c.lastSeenCountry ?? undefined,
+      source: c.source as CaseDetail['source'],
+      dataQuality: c.dataQuality,
+      circumstances: c.circumstances ?? undefined,
+      sourceUrl: c.sourceUrl ?? undefined,
+      rewardAmount: c.rewardAmount ? Number(c.rewardAmount) : undefined,
+      rewardCurrency: c.rewardCurrency ?? undefined,
+      consentGiven: c.consentGiven,
+      resolvedAt: c.resolvedAt?.toISOString(),
+      createdAt: c.createdAt.toISOString(),
+      updatedAt: c.updatedAt.toISOString(),
+      persons: c.persons.map((p) => ({
+        id: p.id,
+        role: p.role as CaseDetail['persons'][number]['role'],
+        firstName: p.firstName ?? undefined,
+        lastName: p.lastName ?? undefined,
+        aliases: (p.aliases as string[] | null) ?? [],
+        nickname: p.nickname ?? undefined,
+        approximateAge: p.approximateAge ?? undefined,
+        ageAtDisappearance: p.ageAtDisappearance ?? undefined,
+        dateOfBirth: p.dateOfBirth?.toISOString().split('T')[0],
+        gender: (p.gender ?? undefined) as CaseDetail['persons'][number]['gender'],
+        nationality: (p.nationality as string[] | null) ?? [],
+        heightCm: p.heightCm ?? undefined,
+        weightKg: p.weightKg ?? undefined,
+        hairColor: p.hairColor ?? undefined,
+        hairLength: p.hairLength ?? undefined,
+        eyeColor: p.eyeColor ?? undefined,
+        skinTone: p.skinTone ?? undefined,
+        distinguishingMarks: p.distinguishingMarks ?? undefined,
+        clothingDescription: p.clothingDescription ?? undefined,
+        medicalConditions: p.medicalConditions ?? undefined,
+        languagesSpoken: (p.languagesSpoken as string[] | null) ?? [],
+        images: p.images.map((img) => ({
+          id: img.id,
+          storageUrl: img.storageUrl,
+          thumbnailUrl: img.thumbnailUrl ?? undefined,
+          imageType: img.imageType as CaseDetail['persons'][number]['images'][number]['imageType'],
+          isPrimary: img.isPrimary,
+          takenAt: img.takenAt?.toISOString(),
+          sourceAttribution: img.sourceAttribution ?? undefined,
+          width: img.width ?? undefined,
+          height: img.height ?? undefined,
+          hasFace: img.hasFace ?? undefined,
+          faceQualityScore: img.faceQualityScore ?? undefined,
+          createdAt: img.createdAt.toISOString(),
+        })),
+      })),
+    }
+  } catch (err) {
+    logger.error({ err, id }, 'getCaseDetail: DB error')
+    return null
+  }
 }
 
 export async function generateMetadata({ params }: CaseDetailPageProps): Promise<Metadata> {

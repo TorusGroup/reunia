@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 
@@ -62,7 +63,7 @@ export function writeAuditLog(entry: AuditLogEntry): void {
         action: entry.action,
         resourceType: entry.resourceType,
         resourceId: entry.resourceId,
-        details: (entry.details ?? {}) as Record<string, unknown>,
+        details: (entry.details ?? {}) as Prisma.InputJsonValue,
         ipAddress: entry.ipAddress,
         userAgent: entry.userAgent,
         timestamp: new Date(),
@@ -83,7 +84,7 @@ export async function writeAuditLogSync(entry: AuditLogEntry): Promise<void> {
         action: entry.action,
         resourceType: entry.resourceType,
         resourceId: entry.resourceId,
-        details: (entry.details ?? {}) as Record<string, unknown>,
+        details: (entry.details ?? {}) as Prisma.InputJsonValue,
         ipAddress: entry.ipAddress,
         userAgent: entry.userAgent,
         timestamp: new Date(),

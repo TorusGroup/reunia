@@ -87,7 +87,7 @@ export interface ScoredResult {
   urgency: string
   source: string
   lastSeenAt?: Date | null
-  computedScore: number
+  computedScore?: number
 }
 
 export function computeRelevanceScore(result: ScoredResult): number {

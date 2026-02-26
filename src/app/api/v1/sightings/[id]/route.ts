@@ -30,7 +30,7 @@ export async function GET(request: NextRequest, { params }: Params): Promise<Nex
       where: { id },
       include: {
         case: { select: { id: true, caseNumber: true, urgency: true } },
-        reporter: { select: { id: true, fullName: true, role: true } },
+        reportedBy: { select: { id: true, fullName: true, role: true } },
         reviewer: { select: { id: true, fullName: true } },
       },
     })

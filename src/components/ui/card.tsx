@@ -1,14 +1,15 @@
 import { clsx } from 'clsx'
-import type { HTMLAttributes } from 'react'
+import type { HTMLAttributes, ReactNode } from 'react'
 
 // =============================================================
 // Card Component — ReunIA Design System (E1-S08)
 // =============================================================
 
-export interface CardProps extends HTMLAttributes<HTMLDivElement> {
+export interface CardProps extends HTMLAttributes<HTMLElement> {
   variant?: 'default' | 'elevated' | 'outline' | 'dark'
   padding?: 'none' | 'sm' | 'md' | 'lg'
   as?: 'div' | 'article' | 'section' | 'li'
+  children?: ReactNode
 }
 
 function Card({

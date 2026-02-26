@@ -104,8 +104,8 @@ export async function checkRateLimit(
   const endpointConfig = RATE_LIMITS[endpoint]
   const config = endpointConfig[role] ?? endpointConfig['public']
 
-  // null = unlimited
-  if (config === null) {
+  // null or undefined = unlimited
+  if (config === null || config === undefined) {
     return {
       allowed: true,
       remaining: 999999,
@@ -114,7 +114,7 @@ export async function checkRateLimit(
     }
   }
 
-  const [limit, windowSeconds] = config
+  const [limit, windowSeconds] = config as [number, number]
 
   // limit = 0 means explicitly blocked for this role
   if (limit === 0) {

@@ -1,4 +1,4 @@
-import Redis from 'ioredis'
+import Redis, { type RedisOptions } from 'ioredis'
 import { Queue, type QueueOptions } from 'bullmq'
 import { env } from '@/lib/env'
 import { logger } from '@/lib/logger'
@@ -11,7 +11,7 @@ import { logger } from '@/lib/logger'
 // Redis connection configuration
 // ---------------------------------------------------------------
 
-const REDIS_OPTIONS: ConstructorParameters<typeof Redis>[0] = {
+const REDIS_OPTIONS: RedisOptions = {
   retryStrategy: (times: number) => {
     if (times > 10) {
       logger.error('Redis: max reconnection attempts reached')

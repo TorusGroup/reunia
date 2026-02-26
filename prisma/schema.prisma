@@ -13,7 +13,7 @@ datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
   directUrl  = env("DIRECT_DATABASE_URL")
-  extensions = [pgvector(map: "vector"), pg_trgm, unaccent]
+  extensions = [pg_trgm, unaccent]
 }
 
 // =============================================================
@@ -388,9 +388,9 @@ model FaceEmbedding {
   personId        String   @map("person_id") @db.Uuid
   modelName       String   @default("ArcFace") @map("model_name")
   modelVersion    String   @default("buffalo_l") @map("model_version")
-  // embedding vector(512) — managed via raw SQL (pgvector extension)
-  // Prisma doesn't natively support vector type; use Unsupported
-  embedding       Unsupported("vector(512)")
+  // embedding vector(512) — requires pgvector extension
+  // Using Bytes as placeholder; pgvector HNSW index added when extension available
+  embedding       Bytes?
   faceBbox        Json?    @map("face_bbox")
   faceConfidence  Float?   @map("face_confidence") @db.Real
   faceQuality     Float?   @map("face_quality") @db.Real

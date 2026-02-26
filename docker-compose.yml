@@ -1,0 +1,98 @@
+version: '3.9'
+
+# =============================================================
+# ReunIA — Docker Compose for Local Development
+# Run: docker compose up -d
+# =============================================================
+
+services:
+  # ---------------------------------------------------------------
+  # PostgreSQL 16 with pgvector, PostGIS
+  # ---------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: reunia-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: reunia_dev
+      POSTGRES_USER: reunia_app
+      POSTGRES_PASSWORD: reunia_dev_password
+      POSTGRES_HOST_AUTH_METHOD: md5
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U reunia_app -d reunia_dev']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - reunia-network
+
+  # ---------------------------------------------------------------
+  # Redis 7 — Cache, Sessions, Job Queues
+  # ---------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: reunia-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass reunia_redis_password
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', 'reunia_redis_password', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - reunia-network
+
+  # ---------------------------------------------------------------
+  # Python Face Service (FastAPI microservice) — Sprint 5
+  # DeepFace + ArcFace + RetinaFace
+  # ---------------------------------------------------------------
+  face-service:
+    build:
+      context: ./face-service
+      dockerfile: Dockerfile
+    container_name: reunia-face-service
+    restart: unless-stopped
+    environment:
+      - MODEL_NAME=ArcFace
+      - DETECTOR_BACKEND=retinaface
+      - API_KEY=local_face_engine_key
+      - LOG_LEVEL=INFO
+    ports:
+      - '8001:8001'
+    volumes:
+      - face-models:/root/.deepface
+    healthcheck:
+      test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://localhost:8001/health")']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - reunia-network
+
+volumes:
+  postgres_data:
+    name: reunia_postgres_data
+  redis_data:
+    name: reunia_redis_data
+  face-models:
+    name: reunia_face_models
+
+networks:
+  reunia-network:
+    name: reunia-network
+    driver: bridge

@@ -1,0 +1,13 @@
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+deepface==0.0.93
+numpy==1.26.4
+Pillow==10.4.0
+httpx==0.27.2
+pydantic==2.9.2
+pydantic-settings==2.6.1
+python-multipart==0.0.12
+tf-keras==2.18.0
+tensorflow-cpu==2.18.0
+onnxruntime==1.20.1
+opencv-python-headless==4.10.0.84

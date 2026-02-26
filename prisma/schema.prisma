@@ -1,0 +1,897 @@
+// =============================================================
+// ReunIA — Prisma Schema
+// Based on: projects/missing-children/docs/architecture/database-schema.md
+// DB: PostgreSQL 16 + pgvector + PostGIS
+// =============================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_DATABASE_URL")
+  extensions = [pgvector(map: "vector"), pg_trgm, unaccent]
+}
+
+// =============================================================
+// ORGANIZATIONS
+// NGOs, law enforcement agencies, government entities
+// =============================================================
+model Organization {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String
+  shortName  String?  @map("short_name")
+  type       OrganizationType
+  countryCode String  @map("country_code") @db.Char(2)
+  stateCode  String?  @map("state_code")
+  city       String?
+  websiteUrl String?  @map("website_url")
+  contactEmail String? @map("contact_email")
+  contactPhone String? @map("contact_phone")
+  verified   Boolean  @default(false)
+  verifiedAt DateTime? @map("verified_at") @db.Timestamptz
+  verifiedById String? @map("verified_by_id") @db.Uuid
+  notes      String?
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  verifiedBy User?    @relation("OrgVerifiedBy", fields: [verifiedById], references: [id])
+  members    User[]   @relation("OrgMembers")
+  assignedCases Case[] @relation("AssignedOrg")
+
+  @@map("organizations")
+  @@index([type])
+  @@index([countryCode])
+}
+
+enum OrganizationType {
+  law_enforcement
+  ngo
+  government
+  international_org
+  platform
+
+  @@map("organization_type")
+}
+
+// =============================================================
+// USERS
+// Authentication and RBAC
+// =============================================================
+model User {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email          String   @unique
+  passwordHash   String   @map("password_hash")
+  role           UserRole
+  orgId          String?  @map("org_id") @db.Uuid
+  fullName       String   @map("full_name")
+  phone          String?
+  countryCode    String?  @map("country_code") @db.Char(2)
+  // Auth state
+  emailVerified  Boolean  @default(false) @map("email_verified")
+  emailVerifyToken String? @map("email_verify_token")
+  emailVerifyExpiresAt DateTime? @map("email_verify_expires_at") @db.Timestamptz
+  mfaEnabled     Boolean  @default(false) @map("mfa_enabled")
+  mfaSecret      String?  @map("mfa_secret")
+  mfaBackupCodes String[] @map("mfa_backup_codes")
+  // Session security
+  lastLoginAt    DateTime? @map("last_login_at") @db.Timestamptz
+  lastLoginIp    String?  @map("last_login_ip")
+  accountLocked  Boolean  @default(false) @map("account_locked")
+  lockedUntil    DateTime? @map("locked_until") @db.Timestamptz
+  failedAttempts Int      @default(0) @map("failed_attempts") @db.SmallInt
+  // Password reset
+  passwordResetToken String? @map("password_reset_token")
+  passwordResetExpiresAt DateTime? @map("password_reset_expires_at") @db.Timestamptz
+  // LGPD
+  privacyAcceptedAt DateTime? @map("privacy_accepted_at") @db.Timestamptz
+  privacyVersion String?  @default("1.0") @map("privacy_version")
+  dataDeletionRequested Boolean @default(false) @map("data_deletion_requested")
+  dataDeletionRequestedAt DateTime? @map("data_deletion_requested_at") @db.Timestamptz
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  org            Organization? @relation("OrgMembers", fields: [orgId], references: [id])
+  verifiedOrgs   Organization[] @relation("OrgVerifiedBy")
+  reportedCases  Case[]   @relation("CaseReporter")
+  consentGivenCases Case[] @relation("CaseConsentGiver")
+  auditLogs      AuditLog[]
+  reviewedMatches Match[] @relation("MatchReviewer")
+  requestedMatches Match[] @relation("MatchRequester")
+  reviewedSightings Sighting[] @relation("SightingReviewer")
+  reportedSightings Sighting[] @relation("SightingReporter")
+  createdAlerts  Alert[]  @relation("AlertCreator")
+  approvedAlerts Alert[]  @relation("AlertApprover")
+  consentRecords ConsentRecord[]
+  notifications  Notification[]
+  searchLogs     SearchLog[]
+  caseNotes      CaseNote[]
+
+  @@map("users")
+  @@index([email])
+  @@index([role])
+  @@index([orgId])
+}
+
+enum UserRole {
+  public
+  family
+  volunteer
+  ngo
+  law_enforcement
+  admin
+
+  @@map("user_role")
+}
+
+// =============================================================
+// CASES
+// Central entity. One case per disappearance event.
+// =============================================================
+model Case {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  caseNumber     String   @unique @map("case_number")
+  caseType       CaseType @map("case_type")
+  status         CaseStatus @default(active)
+  urgency        CaseUrgency @default(standard)
+  // Reporting
+  reportedAt     DateTime @map("reported_at") @db.Timestamptz
+  reportedById   String?  @map("reported_by_id") @db.Uuid
+  assignedOrgId  String?  @map("assigned_org_id") @db.Uuid
+  // Last known location
+  lastSeenAt     DateTime? @map("last_seen_at") @db.Timestamptz
+  lastSeenLocation String? @map("last_seen_location")
+  lastSeenLat    Float?   @map("last_seen_lat")
+  lastSeenLng    Float?   @map("last_seen_lng")
+  // PostGIS geography stored as native (managed outside Prisma ORM)
+  lastSeenCountry String? @map("last_seen_country") @db.Char(2)
+  // Narrative
+  circumstances  String?
+  rewardAmount   Decimal? @map("reward_amount") @db.Decimal(10, 2)
+  rewardCurrency String?  @default("BRL") @map("reward_currency") @db.Char(3)
+  // External data source
+  source         CaseSource
+  sourceId       String?  @map("source_id")
+  sourceUrl      String?  @map("source_url")
+  lastSyncedAt   DateTime? @map("last_synced_at") @db.Timestamptz
+  lastVerified   DateTime? @map("last_verified") @db.Timestamptz
+  dataQuality    Int      @default(50) @map("data_quality") @db.SmallInt
+  // LGPD / GDPR compliance
+  consentGiven   Boolean  @default(false) @map("consent_given")
+  consentType    ConsentType? @map("consent_type")
+  consentGivenAt DateTime? @map("consent_given_at") @db.Timestamptz
+  consentGivenById String? @map("consent_given_by_id") @db.Uuid
+  dataRetentionUntil DateTime? @map("data_retention_until") @db.Timestamptz
+  // Soft delete / anonymization
+  deletionRequested Boolean @default(false) @map("deletion_requested")
+  deletionRequestedAt DateTime? @map("deletion_requested_at") @db.Timestamptz
+  anonymizedAt   DateTime? @map("anonymized_at") @db.Timestamptz
+  // Resolution
+  resolvedAt     DateTime? @map("resolved_at") @db.Timestamptz
+  resolutionNotes String?  @map("resolution_notes")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  reportedBy     User?    @relation("CaseReporter", fields: [reportedById], references: [id])
+  assignedOrg    Organization? @relation("AssignedOrg", fields: [assignedOrgId], references: [id])
+  consentGivenBy User?    @relation("CaseConsentGiver", fields: [consentGivenById], references: [id])
+  persons        Person[]
+  alerts         Alert[]
+  sightings      Sighting[]
+  sources        CaseSourceRecord[] @relation("CaseSources")
+  notes          CaseNote[]
+  consentRecords ConsentRecord[]
+  matches        Match[]
+
+  @@map("cases")
+  @@index([status])
+  @@index([caseType])
+  @@index([urgency])
+  @@index([source])
+  @@index([lastSeenCountry])
+  @@index([assignedOrgId])
+  @@index([reportedById])
+  @@index([reportedAt(sort: Desc)])
+}
+
+enum CaseType {
+  missing
+  abduction_family
+  abduction_nonfamily
+  runaway
+  lost
+  trafficking_suspected
+  unidentified
+  other
+
+  @@map("case_type")
+}
+
+enum CaseStatus {
+  draft
+  pending_review
+  active
+  resolved
+  closed
+  archived
+
+  @@map("case_status")
+}
+
+enum CaseUrgency {
+  critical
+  high
+  standard
+  low
+
+  @@map("case_urgency")
+}
+
+// Note: CaseSource is also the enum name for data source provenance
+enum CaseSource {
+  platform
+  fbi
+  interpol
+  ncmec
+  amber
+  opensanctions
+  cnpd
+  disque100
+  gdelt
+  namus
+  scraper
+  other
+
+  @@map("case_source")
+}
+
+enum ConsentType {
+  parental
+  legal_guardian
+  law_enforcement_override
+  vital_interest
+  public_interest
+
+  @@map("consent_type")
+}
+
+// =============================================================
+// PERSONS
+// Individuals associated with a case
+// =============================================================
+model Person {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  caseId           String   @map("case_id") @db.Uuid
+  role             PersonRole
+  // Identity
+  firstName        String?  @map("first_name")
+  lastName         String?  @map("last_name")
+  aliases          String[] @default([])
+  nickname         String?
+  // Demographics
+  dateOfBirth      DateTime? @map("date_of_birth") @db.Date
+  approximateAge   Int?     @map("approximate_age") @db.SmallInt
+  ageAtDisappearance Int?   @map("age_at_disappearance") @db.SmallInt
+  gender           PersonGender?
+  nationality      String[] @default([])
+  ethnicity        String?
+  // Physical description
+  heightCm         Int?     @map("height_cm") @db.SmallInt
+  weightKg         Int?     @map("weight_kg") @db.SmallInt
+  hairColor        String?  @map("hair_color")
+  hairLength       String?  @map("hair_length")
+  eyeColor         String?  @map("eye_color")
+  skinTone         String?  @map("skin_tone")
+  distinguishingMarks String? @map("distinguishing_marks")
+  clothingDescription String? @map("clothing_description")
+  // Medical
+  medicalConditions String?  @map("medical_conditions")
+  languagesSpoken  String[] @map("languages_spoken")
+  // name_normalized is a GENERATED column in PostgreSQL — managed via raw SQL migration
+  // nameNormalized is read-only in Prisma; Prisma treats it as a regular String
+  nameNormalized   String?  @map("name_normalized")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  case             Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  images           Image[]
+  faceEmbeddings   FaceEmbedding[]
+  matches          Match[]
+
+  @@map("persons")
+  @@index([caseId])
+  @@index([role])
+  @@index([dateOfBirth])
+  @@index([approximateAge, dateOfBirth])
+}
+
+enum PersonRole {
+  missing_child
+  companion
+  suspect
+  witness
+
+  @@map("person_role")
+}
+
+enum PersonGender {
+  male
+  female
+  other
+  unknown
+
+  @@map("person_gender")
+}
+
+// =============================================================
+// IMAGES
+// Photos associated with persons. Raw files in Cloudinary/S3.
+// =============================================================
+model Image {
+  id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  personId               String   @map("person_id") @db.Uuid
+  storageUrl             String   @map("storage_url")
+  storageKey             String   @unique @map("storage_key")
+  thumbnailUrl           String?  @map("thumbnail_url")
+  imageType              ImageType @map("image_type")
+  isPrimary              Boolean  @default(false) @map("is_primary")
+  takenAt                DateTime? @map("taken_at") @db.Timestamptz
+  sourceAttribution      String?  @map("source_attribution")
+  width                  Int?
+  height                 Int?
+  fileSizeBytes          Int?     @map("file_size_bytes")
+  mimeType               String?  @default("image/jpeg") @map("mime_type")
+  contentHash            String?  @map("content_hash")
+  hasFace                Boolean? @map("has_face")
+  faceCount              Int?     @default(0) @map("face_count") @db.SmallInt
+  faceQualityScore       Float?   @map("face_quality_score") @db.Real
+  consentForProcessing   Boolean  @default(false) @map("consent_for_processing")
+  processingPurpose      String?  @default("identification") @map("processing_purpose")
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  person                 Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+  faceEmbeddings         FaceEmbedding[]
+
+  @@map("images")
+  @@index([personId])
+  @@index([imageType])
+}
+
+enum ImageType {
+  photo
+  age_progressed
+  sketch
+  cctv_still
+  sighting
+  document
+
+  @@map("image_type")
+}
+
+// =============================================================
+// FACE EMBEDDINGS (pgvector)
+// 512-dimensional ArcFace embeddings
+// =============================================================
+model FaceEmbedding {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  imageId         String   @map("image_id") @db.Uuid
+  personId        String   @map("person_id") @db.Uuid
+  modelName       String   @default("ArcFace") @map("model_name")
+  modelVersion    String   @default("buffalo_l") @map("model_version")
+  // embedding vector(512) — managed via raw SQL (pgvector extension)
+  // Prisma doesn't natively support vector type; use Unsupported
+  embedding       Unsupported("vector(512)")
+  faceBbox        Json?    @map("face_bbox")
+  faceConfidence  Float?   @map("face_confidence") @db.Real
+  faceQuality     Float?   @map("face_quality") @db.Real
+  estimatedAge    Int?     @map("estimated_age") @db.SmallInt
+  estimatedGender String?  @map("estimated_gender")
+  skinToneCategory SkinToneCategory? @map("skin_tone_category")
+  isSearchable    Boolean  @default(true) @map("is_searchable")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  image           Image    @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  person          Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+  queryMatches    Match[]  @relation("MatchQueryEmbedding")
+  matchedMatches  Match[]  @relation("MatchMatchedEmbedding")
+  sightings       Sighting[]
+
+  @@map("face_embeddings")
+  @@index([personId])
+  @@index([imageId])
+  @@index([modelName, modelVersion])
+  // HNSW index for ANN search is created via raw SQL migration (not supported in Prisma schema)
+}
+
+enum SkinToneCategory {
+  I
+  II
+  III
+  IV
+  V
+  VI
+  unknown
+
+  @@map("skin_tone_category")
+}
+
+// =============================================================
+// MATCHES
+// Face similarity search results — all require HITL review
+// =============================================================
+model Match {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  queryEmbeddingId    String?  @map("query_embedding_id") @db.Uuid
+  queryImageUrl       String?  @map("query_image_url")
+  querySource         MatchQuerySource? @map("query_source")
+  matchedEmbeddingId  String?  @map("matched_embedding_id") @db.Uuid
+  matchedPersonId     String?  @map("matched_person_id") @db.Uuid
+  matchedCaseId       String?  @map("matched_case_id") @db.Uuid
+  similarityScore     Float    @map("similarity_score") @db.Real
+  thresholdUsed       Float    @default(0.3) @map("threshold_used") @db.Real
+  confidenceTier      ConfidenceTier @map("confidence_tier")
+  reviewStatus        MatchReviewStatus @default(pending) @map("review_status")
+  reviewerId          String?  @map("reviewer_id") @db.Uuid
+  reviewedAt          DateTime? @map("reviewed_at") @db.Timestamptz
+  reviewNotes         String?  @map("review_notes")
+  reviewDurationSeconds Int?   @map("review_duration_seconds")
+  sightingId          String?  @map("sighting_id") @db.Uuid
+  actionTaken         MatchAction? @map("action_taken")
+  requestedById       String?  @map("requested_by_id") @db.Uuid
+  requestedAt         DateTime @default(now()) @map("requested_at") @db.Timestamptz
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  queryEmbedding      FaceEmbedding? @relation("MatchQueryEmbedding", fields: [queryEmbeddingId], references: [id])
+  matchedEmbedding    FaceEmbedding? @relation("MatchMatchedEmbedding", fields: [matchedEmbeddingId], references: [id])
+  matchedPerson       Person?        @relation(fields: [matchedPersonId], references: [id])
+  matchedCase         Case?          @relation(fields: [matchedCaseId], references: [id])
+  reviewer            User?          @relation("MatchReviewer", fields: [reviewerId], references: [id])
+  requestedBy         User?          @relation("MatchRequester", fields: [requestedById], references: [id])
+  sighting            Sighting?      @relation(fields: [sightingId], references: [id])
+
+  @@map("matches")
+  @@index([reviewStatus, requestedAt(sort: Desc)])
+  @@index([matchedPersonId])
+  @@index([matchedCaseId])
+  @@index([requestedById])
+  @@index([similarityScore(sort: Desc)])
+  @@index([querySource])
+}
+
+enum MatchQuerySource {
+  citizen_upload
+  sighting_photo
+  ingestion_pipeline
+  le_batch
+  operator_manual
+
+  @@map("match_query_source")
+}
+
+enum ConfidenceTier {
+  possible
+  likely
+  confident
+  very_confident
+
+  @@map("confidence_tier")
+}
+
+enum MatchReviewStatus {
+  pending
+  approved
+  rejected
+  escalated
+  expired
+
+  @@map("match_review_status")
+}
+
+enum MatchAction {
+  alert_sent
+  le_notified
+  family_notified
+  no_action
+
+  @@map("match_action")
+}
+
+// =============================================================
+// SIGHTINGS
+// Community-submitted reports
+// =============================================================
+model Sighting {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  caseId           String?  @map("case_id") @db.Uuid
+  reportedById     String?  @map("reported_by_id") @db.Uuid
+  status           SightingStatus @default(pending)
+  description      String
+  seenAt           DateTime? @map("seen_at") @db.Timestamptz
+  locationText     String?  @map("location_text")
+  latitude         Float?
+  longitude        Float?
+  // geo GEOGRAPHY(POINT,4326) managed via raw SQL
+  photoUrl         String?  @map("photo_url")
+  photoStorageKey  String?  @map("photo_storage_key")
+  faceMatchScore   Float?   @map("face_match_score") @db.Real
+  matchedEmbeddingId String? @map("matched_embedding_id") @db.Uuid
+  reviewerId       String?  @map("reviewer_id") @db.Uuid
+  reviewedAt       DateTime? @map("reviewed_at") @db.Timestamptz
+  reviewNotes      String?  @map("review_notes")
+  ipAddress        String?  @map("ip_address")
+  userAgent        String?  @map("user_agent")
+  isAnonymous      Boolean  @default(false) @map("is_anonymous")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  case             Case?    @relation(fields: [caseId], references: [id])
+  reportedBy       User?    @relation("SightingReporter", fields: [reportedById], references: [id])
+  matchedEmbedding FaceEmbedding? @relation(fields: [matchedEmbeddingId], references: [id])
+  reviewer         User?    @relation("SightingReviewer", fields: [reviewerId], references: [id])
+  matches          Match[]
+
+  @@map("sightings")
+  @@index([caseId])
+  @@index([status])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([reportedById])
+}
+
+enum SightingStatus {
+  pending
+  reviewing
+  confirmed
+  rejected
+  duplicate
+
+  @@map("sighting_status")
+}
+
+// =============================================================
+// ALERTS
+// Push notifications to opted-in subscribers
+// =============================================================
+model Alert {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  caseId        String   @map("case_id") @db.Uuid
+  alertType     AlertType @map("alert_type")
+  status        AlertStatus @default(draft)
+  geoCenterLat  Float?   @map("geo_center_lat")
+  geoCenterLng  Float?   @map("geo_center_lng")
+  geoRadiusKm   Int      @default(50) @map("geo_radius_km")
+  title         String
+  messageBody   String   @map("message_body")
+  messageHtml   String?  @map("message_html")
+  imageUrl      String?  @map("image_url")
+  caseUrl       String?  @map("case_url")
+  createdById   String?  @map("created_by_id") @db.Uuid
+  approvedById  String?  @map("approved_by_id") @db.Uuid
+  approvedAt    DateTime? @map("approved_at") @db.Timestamptz
+  approvalNotes String?  @map("approval_notes")
+  scheduledFor  DateTime? @map("scheduled_for") @db.Timestamptz
+  sentAt        DateTime? @map("sent_at") @db.Timestamptz
+  expiresAt     DateTime? @map("expires_at") @db.Timestamptz
+  recipientCount Int?    @map("recipient_count")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  case          Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  createdBy     User?    @relation("AlertCreator", fields: [createdById], references: [id])
+  approvedBy    User?    @relation("AlertApprover", fields: [approvedById], references: [id])
+  deliveries    AlertDelivery[]
+
+  @@map("alerts")
+  @@index([caseId])
+  @@index([status])
+  @@index([alertType])
+}
+
+enum AlertType {
+  amber
+  community
+  le_bulletin
+  news_correlation
+  sighting_match
+
+  @@map("alert_type")
+}
+
+enum AlertStatus {
+  draft
+  pending_approval
+  approved
+  sending
+  sent
+  cancelled
+  expired
+
+  @@map("alert_status")
+}
+
+// =============================================================
+// ALERT DELIVERIES
+// Fan-out per alert
+// =============================================================
+model AlertDelivery {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  alertId         String   @map("alert_id") @db.Uuid
+  subscriptionId  String?  @map("subscription_id") @db.Uuid
+  channel         DeliveryChannel
+  recipientIdentifier String @map("recipient_identifier")
+  status          DeliveryStatus @default(pending)
+  sentAt          DateTime? @map("sent_at") @db.Timestamptz
+  deliveredAt     DateTime? @map("delivered_at") @db.Timestamptz
+  failedAt        DateTime? @map("failed_at") @db.Timestamptz
+  failureReason   String?  @map("failure_reason")
+  retryCount      Int      @default(0) @map("retry_count") @db.SmallInt
+  externalMessageId String? @map("external_message_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  alert           Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  subscription    AlertSubscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@map("alert_deliveries")
+  @@index([alertId])
+  @@index([status])
+}
+
+enum DeliveryChannel {
+  whatsapp
+  sms
+  email
+  push
+  in_app
+
+  @@map("delivery_channel")
+}
+
+enum DeliveryStatus {
+  pending
+  sent
+  delivered
+  failed
+  bounced
+
+  @@map("delivery_status")
+}
+
+// =============================================================
+// ALERT SUBSCRIPTIONS
+// Citizen opt-in for geofenced alerts
+// =============================================================
+model AlertSubscription {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  channel          DeliveryChannel
+  contactIdentifier String  @map("contact_identifier")
+  // geo GEOGRAPHY(POINT,4326) managed via raw SQL
+  radiusKm         Int      @default(50) @map("radius_km")
+  isActive         Boolean  @default(true) @map("is_active")
+  consentGivenAt   DateTime @map("consent_given_at") @db.Timestamptz
+  consentIp        String?  @map("consent_ip")
+  unsubscribedAt   DateTime? @map("unsubscribed_at") @db.Timestamptz
+  unsubscribeToken String?  @unique @map("unsubscribe_token")
+  lastAlertedAt    DateTime? @map("last_alerted_at") @db.Timestamptz
+  alertCount       Int      @default(0) @map("alert_count")
+  userId           String?  @map("user_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  deliveries       AlertDelivery[]
+
+  @@map("alert_subscriptions")
+  @@index([channel, isActive])
+}
+
+// =============================================================
+// DATA SOURCES
+// External API registry
+// =============================================================
+model DataSource {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug             String   @unique
+  name             String
+  description      String?
+  url              String?
+  apiType          String   @map("api_type")
+  authRequired     Boolean  @default(false) @map("auth_required")
+  pollingIntervalMinutes Int @default(1440) @map("polling_interval_minutes")
+  isActive         Boolean  @default(true) @map("is_active")
+  lastFetchedAt    DateTime? @map("last_fetched_at") @db.Timestamptz
+  lastSuccessAt    DateTime? @map("last_success_at") @db.Timestamptz
+  lastErrorAt      DateTime? @map("last_error_at") @db.Timestamptz
+  lastErrorMessage String?  @map("last_error_message")
+  totalRecordsFetched Int   @default(0) @map("total_records_fetched")
+  config           Json     @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  ingestionLogs    IngestionLog[]
+
+  @@map("data_sources")
+}
+
+// =============================================================
+// INGESTION LOGS
+// Pipeline execution log
+// =============================================================
+model IngestionLog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dataSourceId   String   @map("data_source_id") @db.Uuid
+  startedAt      DateTime @map("started_at") @db.Timestamptz
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz
+  status         String   @default("running")
+  recordsFetched Int      @default(0) @map("records_fetched")
+  recordsInserted Int     @default(0) @map("records_inserted")
+  recordsUpdated Int      @default(0) @map("records_updated")
+  recordsSkipped Int      @default(0) @map("records_skipped")
+  recordsFailed  Int      @default(0) @map("records_failed")
+  errorMessage   String?  @map("error_message")
+  errorDetails   Json?    @map("error_details")
+  jobId          String?  @map("job_id")
+  durationMs     Int?     @map("duration_ms")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  dataSource     DataSource @relation(fields: [dataSourceId], references: [id])
+
+  @@map("ingestion_logs")
+  @@index([dataSourceId])
+  @@index([startedAt(sort: Desc)])
+}
+
+// =============================================================
+// AUDIT LOG
+// Immutable access log — INSERT only, no UPDATE/DELETE
+// Partitioned by month in PostgreSQL (managed via raw SQL)
+// =============================================================
+model AuditLog {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String?  @map("user_id") @db.Uuid
+  action       String
+  resourceType String   @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  details      Json     @default("{}")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  timestamp    DateTime @default(now()) @db.Timestamptz
+
+  user         User?    @relation(fields: [userId], references: [id])
+
+  @@map("audit_log")
+  @@index([userId])
+  @@index([action])
+  @@index([resourceType, resourceId])
+  @@index([timestamp(sort: Desc)])
+}
+
+// =============================================================
+// CONSENT RECORDS
+// LGPD consent tracking
+// =============================================================
+model ConsentRecord {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dataSubjectId   String   @map("data_subject_id") @db.Uuid
+  dataSubjectType String   @map("data_subject_type")
+  caseId          String?  @map("case_id") @db.Uuid
+  userId          String?  @map("user_id") @db.Uuid
+  purpose         String
+  legalBasis      String   @map("legal_basis")
+  consentGiven    Boolean  @map("consent_given")
+  consentGivenAt  DateTime? @map("consent_given_at") @db.Timestamptz
+  consentRevokedAt DateTime? @map("consent_revoked_at") @db.Timestamptz
+  ipAddress       String?  @map("ip_address")
+  privacyPolicyVersion String? @map("privacy_policy_version")
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  case            Case?    @relation(fields: [caseId], references: [id])
+  user            User?    @relation(fields: [userId], references: [id])
+
+  @@map("consent_records")
+  @@index([dataSubjectId])
+  @@index([caseId])
+}
+
+// =============================================================
+// SEARCH LOGS
+// Analytics
+// =============================================================
+model SearchLog {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String?  @map("user_id") @db.Uuid
+  sessionId     String?  @map("session_id")
+  searchType    String   @map("search_type")
+  query         String?
+  filters       Json     @default("{}")
+  resultCount   Int?     @map("result_count")
+  durationMs    Int?     @map("duration_ms")
+  ipAddress     String?  @map("ip_address")
+  userAgent     String?  @map("user_agent")
+  timestamp     DateTime @default(now()) @db.Timestamptz
+
+  user          User?    @relation(fields: [userId], references: [id])
+
+  @@map("search_logs")
+  @@index([userId])
+  @@index([searchType])
+  @@index([timestamp(sort: Desc)])
+}
+
+// =============================================================
+// CASE SOURCES
+// Provenance per case (which external sources contributed)
+// =============================================================
+model CaseSourceRecord {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  caseId     String   @map("case_id") @db.Uuid
+  sourceSlug String   @map("source_slug")
+  sourceId   String?  @map("source_id")
+  sourceUrl  String?  @map("source_url")
+  fetchedAt  DateTime @map("fetched_at") @db.Timestamptz
+  rawData    Json?    @map("raw_data")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  case       Case     @relation("CaseSources", fields: [caseId], references: [id], onDelete: Cascade)
+
+
+  @@map("case_sources")
+  @@index([caseId])
+  @@index([sourceSlug])
+}
+
+// =============================================================
+// CASE NOTES
+// Investigator notes (LE only)
+// =============================================================
+model CaseNote {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  caseId      String   @map("case_id") @db.Uuid
+  authorId    String   @map("author_id") @db.Uuid
+  content     String
+  isConfidential Boolean @default(false) @map("is_confidential")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  case        Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  author      User     @relation(fields: [authorId], references: [id])
+
+  @@map("case_notes")
+  @@index([caseId])
+  @@index([authorId])
+}
+
+// =============================================================
+// NOTIFICATIONS
+// In-app notifications
+// =============================================================
+model Notification {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  type        String
+  title       String
+  body        String
+  data        Json     @default("{}")
+  readAt      DateTime? @map("read_at") @db.Timestamptz
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+  @@index([userId])
+  @@index([userId, readAt])
+}

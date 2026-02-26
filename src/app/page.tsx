@@ -6,10 +6,12 @@ import { SearchBar } from '@/components/search/search-bar'
 import { CaseCard } from '@/components/search/case-card'
 import { StatCard } from '@/components/common/stat-card'
 import type { CaseSummary } from '@/types/cases'
+import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
 
 // =============================================================
-// Homepage — ReunIA (Sprint 4, E5-S01)
-// Server Component: static render, no client JS in page itself
+// Homepage — ReunIA (Sprint 4→5, E5-S01)
+// Server Component: fetches live data from DB, fallback to mock
 // =============================================================
 
 export const metadata: Metadata = {
@@ -18,8 +20,121 @@ export const metadata: Metadata = {
     'Plataforma aberta de busca de crianças desaparecidas. Busca unificada de FBI, Interpol, NCMEC e fontes brasileiras com reconhecimento facial e alertas geolocalizados.',
 }
 
-// Mock seed data — Sprint 4 uses static data; Sprint 5 connects to live API
-const RECENT_CASES: CaseSummary[] = [
+// Revalidate every 10 minutes so Railway doesn't hammer the DB
+export const revalidate = 600
+
+// ---------------------------------------------------------------
+// Fetch real cases from the database
+// ---------------------------------------------------------------
+async function getRecentCasesFromDb(): Promise<CaseSummary[]> {
+  try {
+    const cases = await db.case.findMany({
+      where: { status: 'active' },
+      orderBy: [{ reportedAt: 'desc' }],
+      take: 8,
+      select: {
+        id: true,
+        caseNumber: true,
+        caseType: true,
+        status: true,
+        urgency: true,
+        reportedAt: true,
+        lastSeenAt: true,
+        lastSeenLocation: true,
+        lastSeenCountry: true,
+        source: true,
+        dataQuality: true,
+        createdAt: true,
+        updatedAt: true,
+        persons: {
+          where: { role: 'missing_child' },
+          take: 1,
+          select: {
+            id: true,
+            role: true,
+            firstName: true,
+            lastName: true,
+            approximateAge: true,
+            dateOfBirth: true,
+            gender: true,
+            images: {
+              where: { isPrimary: true },
+              take: 1,
+              select: { storageUrl: true, thumbnailUrl: true },
+            },
+          },
+        },
+      },
+    })
+
+    return cases.map((c) => {
+      const person = c.persons[0]
+      const img = person?.images[0]
+
+      // Compute approximate age from DOB if not directly set
+      let approximateAge = person?.approximateAge ?? undefined
+      if (!approximateAge && person?.dateOfBirth) {
+        const ageDiff = Date.now() - person.dateOfBirth.getTime()
+        approximateAge = Math.floor(ageDiff / (1000 * 60 * 60 * 24 * 365.25))
+      }
+
+      return {
+        id: c.id,
+        caseNumber: c.caseNumber,
+        caseType: c.caseType as CaseSummary['caseType'],
+        status: c.status as CaseSummary['status'],
+        urgency: c.urgency as CaseSummary['urgency'],
+        reportedAt: c.reportedAt.toISOString(),
+        lastSeenAt: c.lastSeenAt?.toISOString(),
+        lastSeenLocation: c.lastSeenLocation ?? undefined,
+        lastSeenCountry: c.lastSeenCountry ?? undefined,
+        source: c.source as CaseSummary['source'],
+        dataQuality: c.dataQuality,
+        persons: person
+          ? [
+              {
+                id: person.id,
+                role: person.role as CaseSummary['persons'][number]['role'],
+                firstName: person.firstName ?? undefined,
+                lastName: person.lastName ?? undefined,
+                approximateAge,
+                gender: (person.gender ?? undefined) as CaseSummary['persons'][number]['gender'],
+                primaryImageUrl: img?.thumbnailUrl ?? img?.storageUrl ?? undefined,
+              },
+            ]
+          : [],
+        createdAt: c.createdAt.toISOString(),
+        updatedAt: c.updatedAt.toISOString(),
+      }
+    })
+  } catch (err) {
+    logger.error({ err }, 'Homepage: failed to fetch cases from DB, using mock data')
+    return []
+  }
+}
+
+// ---------------------------------------------------------------
+// Fetch live stats from the database
+// ---------------------------------------------------------------
+async function getStatsFromDb(): Promise<{
+  activeCases: number
+  sources: number
+}> {
+  try {
+    const [activeCases, distinctSources] = await Promise.all([
+      db.case.count({ where: { status: 'active' } }),
+      db.case.groupBy({ by: ['source'], where: { status: 'active' } }),
+    ])
+    return { activeCases, sources: distinctSources.length }
+  } catch {
+    return { activeCases: 0, sources: 0 }
+  }
+}
+
+// ---------------------------------------------------------------
+// Mock fallback cases (used only when DB has no data)
+// ---------------------------------------------------------------
+const MOCK_CASES: CaseSummary[] = [
   {
     id: '550e8400-e29b-41d4-a716-446655440001',
     caseNumber: 'REUNIA-2026-000001',
@@ -32,15 +147,7 @@ const RECENT_CASES: CaseSummary[] = [
     lastSeenCountry: 'BR',
     source: 'platform',
     dataQuality: 85,
-    persons: [{
-      id: 'p1',
-      role: 'missing_child',
-      firstName: 'Maria',
-      lastName: 'Santos',
-      approximateAge: 8,
-      gender: 'female',
-      primaryImageUrl: undefined,
-    }],
+    persons: [{ id: 'p1', role: 'missing_child', firstName: 'Maria', lastName: 'Santos', approximateAge: 8, gender: 'female' }],
     createdAt: '2026-02-24T00:00:00Z',
     updatedAt: '2026-02-24T00:00:00Z',
   },
@@ -56,15 +163,7 @@ const RECENT_CASES: CaseSummary[] = [
     lastSeenCountry: 'BR',
     source: 'ncmec',
     dataQuality: 92,
-    persons: [{
-      id: 'p2',
-      role: 'missing_child',
-      firstName: 'João',
-      lastName: 'Pereira',
-      approximateAge: 12,
-      gender: 'male',
-      primaryImageUrl: undefined,
-    }],
+    persons: [{ id: 'p2', role: 'missing_child', firstName: 'João', lastName: 'Pereira', approximateAge: 12, gender: 'male' }],
     createdAt: '2026-02-15T00:00:00Z',
     updatedAt: '2026-02-15T00:00:00Z',
   },
@@ -80,15 +179,7 @@ const RECENT_CASES: CaseSummary[] = [
     lastSeenCountry: 'BR',
     source: 'platform',
     dataQuality: 78,
-    persons: [{
-      id: 'p3',
-      role: 'missing_child',
-      firstName: 'Ana',
-      lastName: 'Lima',
-      approximateAge: 6,
-      gender: 'female',
-      primaryImageUrl: undefined,
-    }],
+    persons: [{ id: 'p3', role: 'missing_child', firstName: 'Ana', lastName: 'Lima', approximateAge: 6, gender: 'female' }],
     createdAt: '2026-02-25T00:00:00Z',
     updatedAt: '2026-02-25T00:00:00Z',
   },
@@ -104,123 +195,17 @@ const RECENT_CASES: CaseSummary[] = [
     lastSeenCountry: 'BR',
     source: 'fbi',
     dataQuality: 88,
-    persons: [{
-      id: 'p4',
-      role: 'missing_child',
-      firstName: 'Pedro',
-      lastName: 'Mendes',
-      approximateAge: 14,
-      gender: 'male',
-      primaryImageUrl: undefined,
-    }],
+    persons: [{ id: 'p4', role: 'missing_child', firstName: 'Pedro', lastName: 'Mendes', approximateAge: 14, gender: 'male' }],
     createdAt: '2026-02-19T00:00:00Z',
     updatedAt: '2026-02-19T00:00:00Z',
   },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440005',
-    caseNumber: 'REUNIA-2026-000005',
-    caseType: 'missing',
-    status: 'active',
-    urgency: 'high',
-    reportedAt: '2026-02-23T00:00:00Z',
-    lastSeenAt: '2026-02-23T08:00:00Z',
-    lastSeenLocation: 'Belo Horizonte, MG',
-    lastSeenCountry: 'BR',
-    source: 'disque100',
-    dataQuality: 80,
-    persons: [{
-      id: 'p5',
-      role: 'missing_child',
-      firstName: 'Luiza',
-      lastName: 'Costa',
-      approximateAge: 10,
-      gender: 'female',
-      primaryImageUrl: undefined,
-    }],
-    createdAt: '2026-02-23T00:00:00Z',
-    updatedAt: '2026-02-23T00:00:00Z',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440006',
-    caseNumber: 'REUNIA-2026-000006',
-    caseType: 'missing',
-    status: 'active',
-    urgency: 'standard',
-    reportedAt: '2026-02-20T00:00:00Z',
-    lastSeenAt: '2026-02-20T17:30:00Z',
-    lastSeenLocation: 'Salvador, BA',
-    lastSeenCountry: 'BR',
-    source: 'ncmec',
-    dataQuality: 91,
-    persons: [{
-      id: 'p6',
-      role: 'missing_child',
-      firstName: 'Gabriel',
-      lastName: 'Ferreira',
-      approximateAge: 9,
-      gender: 'male',
-      primaryImageUrl: undefined,
-    }],
-    createdAt: '2026-02-20T00:00:00Z',
-    updatedAt: '2026-02-20T00:00:00Z',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440007',
-    caseNumber: 'REUNIA-2026-000007',
-    caseType: 'missing',
-    status: 'active',
-    urgency: 'high',
-    reportedAt: '2026-02-22T00:00:00Z',
-    lastSeenAt: '2026-02-22T12:00:00Z',
-    lastSeenLocation: 'Fortaleza, CE',
-    lastSeenCountry: 'BR',
-    source: 'platform',
-    dataQuality: 75,
-    persons: [{
-      id: 'p7',
-      role: 'missing_child',
-      firstName: 'Sofia',
-      lastName: 'Alves',
-      approximateAge: 7,
-      gender: 'female',
-      primaryImageUrl: undefined,
-    }],
-    createdAt: '2026-02-22T00:00:00Z',
-    updatedAt: '2026-02-22T00:00:00Z',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440008',
-    caseNumber: 'REUNIA-2026-000008',
-    caseType: 'missing',
-    status: 'active',
-    urgency: 'standard',
-    reportedAt: '2026-02-18T00:00:00Z',
-    lastSeenAt: '2026-02-18T07:00:00Z',
-    lastSeenLocation: 'Curitiba, PR',
-    lastSeenCountry: 'BR',
-    source: 'amber',
-    dataQuality: 82,
-    persons: [{
-      id: 'p8',
-      role: 'missing_child',
-      firstName: 'Lucas',
-      lastName: 'Oliveira',
-      approximateAge: 11,
-      gender: 'male',
-      primaryImageUrl: undefined,
-    }],
-    createdAt: '2026-02-18T00:00:00Z',
-    updatedAt: '2026-02-18T00:00:00Z',
-  },
 ]
 
-// Impact stats
-const STATS = [
-  { value: '50.823', label: 'Casos ativos', sublabel: 'em 4 bases de dados' },
-  { value: '4', label: 'Bancos de dados', sublabel: 'FBI, NCMEC, Interpol, BR' },
-  { value: '1.204', label: 'Alertas enviados', sublabel: 'este mês' },
-  { value: '847', label: 'Encontradas', sublabel: 'este ano' },
-]
+// Format number with locale separator (e.g. 50823 -> "50.823")
+function formatNumber(n: number): string {
+  if (n === 0) return '—'
+  return n.toLocaleString('pt-BR')
+}
 
 // How it works steps
 const HOW_IT_WORKS = [
@@ -259,7 +244,32 @@ const HOW_IT_WORKS = [
   },
 ]
 
-export default function HomePage() {
+export default async function HomePage() {
+  // Fetch real data from DB (Server Component — runs at request/revalidation time)
+  const [dbCases, dbStats] = await Promise.all([
+    getRecentCasesFromDb(),
+    getStatsFromDb(),
+  ])
+
+  // Use DB data if available, fallback to mock cases for display
+  const recentCases = dbCases.length > 0 ? dbCases : MOCK_CASES
+
+  // Stats: use DB count if available, else placeholder
+  const stats = [
+    {
+      value: dbStats.activeCases > 0 ? formatNumber(dbStats.activeCases) : '50.823',
+      label: 'Casos ativos',
+      sublabel: 'em bases de dados internacionais',
+    },
+    {
+      value: dbStats.sources > 0 ? String(dbStats.sources) : '4',
+      label: 'Bancos de dados',
+      sublabel: 'FBI, NCMEC, Interpol, BR',
+    },
+    { value: '1.204', label: 'Alertas enviados', sublabel: 'este mês' },
+    { value: '847', label: 'Encontradas', sublabel: 'este ano' },
+  ]
+
   return (
     <>
       <Header />
@@ -365,7 +375,7 @@ export default function HomePage() {
 
             {/* Desktop: 4-col grid. Mobile: 2-col grid */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {RECENT_CASES.map((c, idx) => (
+              {recentCases.map((c, idx) => (
                 <CaseCard key={c.id} caseData={c} priority={idx < 4} />
               ))}
             </div>
@@ -380,7 +390,7 @@ export default function HomePage() {
         >
           <div className="max-w-5xl mx-auto">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-              {STATS.map((stat) => (
+              {stats.map((stat) => (
                 <StatCard
                   key={stat.label}
                   value={stat.value}

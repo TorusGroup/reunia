@@ -7,8 +7,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
-import { triggerManualIngestion, getScheduleStatus } from '@/services/jobs/scheduler'
 import type { CaseSource } from '@prisma/client'
+
+// Lazy-load scheduler to avoid BullMQ connection at import time
+async function safeGetScheduleStatus() {
+  try {
+    const { getScheduleStatus } = await import('@/services/jobs/scheduler')
+    return await getScheduleStatus()
+  } catch {
+    return []
+  }
+}
+
+async function safeTriggerManualIngestion(source: CaseSource, options?: { maxPages?: number }) {
+  const { triggerManualIngestion } = await import('@/services/jobs/scheduler')
+  return triggerManualIngestion(source, options)
+}
 
 // ---------------------------------------------------------------
 // POST body schema
@@ -50,8 +64,8 @@ export async function GET(): Promise<NextResponse> {
       },
     })
 
-    // Get schedule status
-    const schedules = await getScheduleStatus()
+    // Get schedule status (safe — won't crash if Redis/BullMQ unavailable)
+    const schedules = await safeGetScheduleStatus()
 
     // Aggregate by source
     const sourceMap = new Map<
@@ -146,7 +160,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const { source, options } = validation.data
 
-    const jobId = await triggerManualIngestion(source as CaseSource, options)
+    const jobId = await safeTriggerManualIngestion(source as CaseSource, options)
 
     logger.info({ source, jobId }, 'POST /api/v1/ingestion: manual ingestion triggered')
 

@@ -61,7 +61,7 @@ export class FbiAdapter extends BaseAdapter {
   readonly sourceName = 'FBI Wanted — Missing Persons'
   readonly pollingIntervalMinutes = 360 // 6 hours
 
-  private readonly baseUrl = 'https://api.fbi.gov/@wanted'
+  private readonly baseUrl = 'https://api.fbi.gov/wanted/v1/list'
   private readonly pageSize = 20
 
   async fetch(options: FetchOptions = {}): Promise<RawRecord[]> {
@@ -74,7 +74,8 @@ export class FbiAdapter extends BaseAdapter {
 
     while (page <= maxPages) {
       try {
-        const url = `${this.baseUrl}?classification=missing&page=${page}&pageSize=${this.pageSize}`
+        // FBI Wanted v1 API: person_classification filters to Missing Persons category
+        const url = `${this.baseUrl}?page=${page}&pageSize=${this.pageSize}&person_classification=Missing%20Persons`
 
         const response = await this.fetchWithRetry(url)
         const data = (await response.json()) as FbiApiResponse

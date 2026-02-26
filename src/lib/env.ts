@@ -77,32 +77,48 @@ const optionalEnvSchema = z.object({
   SMTP_PASS: z.string().optional(),
 })
 
+// Build-time defaults — Next.js static generation doesn't need runtime secrets
+const BUILD_DEFAULTS: Record<string, string> = {
+  DATABASE_URL: 'postgresql://build:build@localhost:5432/build',
+  REDIS_URL: 'redis://localhost:6379',
+  JWT_PRIVATE_KEY: 'build-placeholder',
+  JWT_PUBLIC_KEY: 'build-placeholder',
+  ENCRYPTION_KEY: 'build-placeholder-32-chars-xxxxxxxx',
+  CLOUDINARY_CLOUD_NAME: 'build',
+  CLOUDINARY_API_KEY: 'build',
+  CLOUDINARY_API_SECRET: 'build',
+}
+
 function validateEnv() {
-  // In test environment, be lenient with missing vars
-  if (process.env.NODE_ENV === 'test') {
+  const isBuild = process.env.NEXT_PHASE === 'phase-production-build'
+  const isTest = process.env.NODE_ENV === 'test'
+
+  // During build or test, fill missing vars with safe defaults
+  if (isBuild || isTest) {
+    const envWithDefaults = { ...process.env }
+    for (const [key, value] of Object.entries(BUILD_DEFAULTS)) {
+      if (!envWithDefaults[key]) {
+        envWithDefaults[key] = value
+      }
+    }
+    const result = envSchema.safeParse(envWithDefaults)
+    if (result.success) return result.data
+    // If still fails, return a permissive fallback
     return {
-      ...process.env,
-      NODE_ENV: 'test' as const,
-      DATABASE_URL: process.env.DATABASE_URL ?? 'postgresql://test:test@localhost:5432/test',
-      REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
-      JWT_PRIVATE_KEY: process.env.JWT_PRIVATE_KEY ?? 'test-private-key',
-      JWT_PUBLIC_KEY: process.env.JWT_PUBLIC_KEY ?? 'test-public-key',
-      ENCRYPTION_KEY: process.env.ENCRYPTION_KEY ?? 'test-encryption-key-32-chars-xxxx',
-      CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME ?? 'test',
-      CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY ?? 'test',
-      CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET ?? 'test',
+      ...envWithDefaults,
+      NODE_ENV: (process.env.NODE_ENV ?? 'development') as 'development' | 'test' | 'production',
       JWT_ACCESS_TOKEN_TTL: 900,
       JWT_REFRESH_TOKEN_TTL: 604800,
       FACE_ENGINE_TIMEOUT: 5000,
-      NEXT_PUBLIC_APP_URL: 'http://localhost:3000',
-      NEXT_PUBLIC_API_URL: 'http://localhost:3000/api/v1',
+      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000',
+      NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api/v1',
       CLOUDINARY_UPLOAD_PRESET: 'reunia_photos',
       CLOUDINARY_BASE_FOLDER: 'reunia',
-      FACE_ENGINE_URL: 'http://localhost:8001',
-      FACE_ENGINE_API_KEY: 'test',
-      LOG_LEVEL: 'warn' as const,
+      FACE_ENGINE_URL: process.env.FACE_ENGINE_URL ?? 'http://localhost:8001',
+      FACE_ENGINE_API_KEY: 'build',
+      LOG_LEVEL: 'info' as const,
       LOG_PRETTY: false,
-    }
+    } as z.infer<typeof envSchema>
   }
 
   const result = envSchema.safeParse(process.env)

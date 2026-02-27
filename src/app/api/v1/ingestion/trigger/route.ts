@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { runIngestion } from '@/services/ingestion/pipeline'
 import { fbiAdapter } from '@/services/ingestion/fbi-adapter'
@@ -22,11 +23,9 @@ export const maxDuration = 300
 // ---------------------------------------------------------------
 const triggerSchema = z.object({
   source: z.enum(['fbi', 'interpol', 'ncmec', 'all']),
-  // FBI: 1 page = 50 records, ~2s | Interpol: blocked (403), returns 0 gracefully
-  // NCMEC public: 1 page = 25 records, ~5s
-  // Default 1 page to avoid HTTP timeouts on Railway Hobby plan (60s limit)
-  // Use maxPages:5-20 only if you have Railway Pro (300s) and need bulk import
   maxPages: z.number().int().min(1).max(50).optional().default(1),
+  // purge: delete all cases from this source before importing (useful for re-import)
+  purge: z.boolean().optional().default(false),
 })
 
 // ---------------------------------------------------------------
@@ -90,12 +89,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     )
   }
 
-  const { source, maxPages } = validation.data
+  const { source, maxPages, purge } = validation.data
   const startedAt = new Date()
 
-  logger.info({ source, maxPages }, 'POST /api/v1/ingestion/trigger: starting sync ingestion')
+  logger.info({ source, maxPages, purge }, 'POST /api/v1/ingestion/trigger: starting sync ingestion')
 
   try {
+    // Purge existing records if requested (delete cases + cascading persons/images)
+    if (purge) {
+      const sourcesToPurge = source === 'all' ? Object.keys(ADAPTERS) : [source]
+      for (const s of sourcesToPurge) {
+        const deleted = await db.case.deleteMany({ where: { source: s as never } })
+        logger.info({ source: s, deleted: deleted.count }, 'Purged existing cases')
+      }
+    }
+
     // Determine which adapters to run
     const adaptersToRun: Array<{ name: string; adapter: ISourceAdapter }> =
       source === 'all'

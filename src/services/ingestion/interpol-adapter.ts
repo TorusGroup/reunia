@@ -91,7 +91,8 @@ export class InterpolAdapter extends BaseAdapter {
 
         let response: Response
         try {
-          response = await this.fetchWithRetry(url)
+          // Use shorter retry delays (1s initial) to avoid Railway request timeouts
+          response = await this.fetchWithRetry(url, {}, 2, 1000)
         } catch (err) {
           // Interpol blocks datacenter/cloud IPs with 403 Forbidden.
           // Gracefully return whatever we have instead of crashing.
@@ -149,7 +150,7 @@ export class InterpolAdapter extends BaseAdapter {
     let detail: InterpolDetailResponse | undefined
     try {
       if (notice._links?.self?.href) {
-        const detailResp = await this.fetchWithRetry(notice._links.self.href)
+        const detailResp = await this.fetchWithRetry(notice._links.self.href, {}, 2, 1000)
         detail = (await detailResp.json()) as InterpolDetailResponse
       }
     } catch (err) {
@@ -163,7 +164,7 @@ export class InterpolAdapter extends BaseAdapter {
     const photoUrls: string[] = []
     try {
       if (notice._links?.images?.href) {
-        const imagesResp = await this.fetchWithRetry(notice._links.images.href)
+        const imagesResp = await this.fetchWithRetry(notice._links.images.href, {}, 2, 1000)
         const imageData = (await imagesResp.json()) as InterpolImageListResponse
         const images = imageData._embedded?.images ?? []
         for (const img of images) {

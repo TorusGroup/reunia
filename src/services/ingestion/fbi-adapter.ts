@@ -89,7 +89,8 @@ export class FbiAdapter extends BaseAdapter {
         // We fetch all wanted records and apply client-side filtering below.
         const url = `${this.baseUrl}?page=${page}&pageSize=${this.pageSize}`
 
-        const response = await this.fetchWithRetry(url)
+        // Use shorter retry delays (1s initial) to avoid Railway request timeouts
+        const response = await this.fetchWithRetry(url, {}, 3, 1000)
         const data = (await response.json()) as FbiApiResponse
 
         if (!data.items || data.items.length === 0) {

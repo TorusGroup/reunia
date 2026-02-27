@@ -10,6 +10,7 @@ import { logger } from '@/lib/logger'
 import { runIngestion } from '@/services/ingestion/pipeline'
 import { fbiAdapter } from '@/services/ingestion/fbi-adapter'
 import { interpolAdapter } from '@/services/ingestion/interpol-adapter'
+import { ncmecPublicAdapter } from '@/services/ingestion/ncmec-public-adapter'
 import type { ISourceAdapter } from '@/services/ingestion/base-adapter'
 
 // Extend Railway's default 30s timeout — ingestion can take a few minutes
@@ -20,10 +21,12 @@ export const maxDuration = 300
 // Request schema
 // ---------------------------------------------------------------
 const triggerSchema = z.object({
-  source: z.enum(['fbi', 'interpol', 'all']),
+  source: z.enum(['fbi', 'interpol', 'ncmec', 'all']),
   // FBI: 1 page = 50 records, ~2s | Interpol: blocked (403), returns 0 gracefully
-  // Default 5 pages = ~250 FBI records, fits within 300s timeout
-  maxPages: z.number().int().min(1).max(50).optional().default(5),
+  // NCMEC public: 1 page = 25 records, ~5s
+  // Default 1 page to avoid HTTP timeouts on Railway Hobby plan (60s limit)
+  // Use maxPages:5-20 only if you have Railway Pro (300s) and need bulk import
+  maxPages: z.number().int().min(1).max(50).optional().default(1),
 })
 
 // ---------------------------------------------------------------
@@ -32,6 +35,7 @@ const triggerSchema = z.object({
 const ADAPTERS: Record<string, ISourceAdapter> = {
   fbi: fbiAdapter,
   interpol: interpolAdapter,
+  ncmec: ncmecPublicAdapter,
 }
 
 // ---------------------------------------------------------------
@@ -203,11 +207,16 @@ export async function GET(): Promise<NextResponse> {
     success: true,
     data: {
       description: 'Synchronous ingestion trigger endpoint (no BullMQ required)',
-      usage: 'POST /api/v1/ingestion/trigger with body { source: "fbi" | "interpol" | "all", maxPages?: number }',
+      usage: 'POST /api/v1/ingestion/trigger with body { source: "fbi" | "interpol" | "ncmec" | "all", maxPages?: number }',
       auth: 'Header: x-admin-key: <ADMIN_INGESTION_KEY env var>',
       availableSources: Object.keys(ADAPTERS),
       defaultMaxPages: 1,
-      notes: 'Interpol: 1 page ~45s (20 notices x detail+images). FBI: 1 page ~2s (20 records). Use maxPages conservatively.',
+      notes: [
+        'FBI: 1 page = 50 records, ~2s. Filters missing persons client-side.',
+        'Interpol: blocked by cloud IP (403), returns 0 gracefully.',
+        'NCMEC: public endpoint, no auth, 1 page = 25 records, ~5s.',
+        'Use maxPages conservatively to avoid Railway 60s timeout (Hobby) or 300s (Pro).',
+      ],
     },
   })
 }

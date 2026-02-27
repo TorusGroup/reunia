@@ -20,8 +20,8 @@ export const metadata: Metadata = {
     'Plataforma aberta de busca de crianças desaparecidas. Busca unificada de FBI, Interpol, NCMEC e fontes brasileiras com reconhecimento facial e alertas geolocalizados.',
 }
 
-// Revalidate every 10 minutes so Railway doesn't hammer the DB
-export const revalidate = 600
+// Revalidate every 60 seconds for fresh data
+export const revalidate = 60
 
 // ---------------------------------------------------------------
 // Fetch real cases from the database

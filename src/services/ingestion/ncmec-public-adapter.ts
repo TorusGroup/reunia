@@ -16,34 +16,40 @@ import type { CaseSource } from '@prisma/client'
 interface NcmecPublicCase {
   id?: number
   caseNumber?: string
+  orgPrefix?: string
   orgName?: string
   firstName?: string
   middleName?: string
   lastName?: string
-  missingDate?: string
+  missingDate?: string       // "Dec 26, 2025 12:00:00 AM"
   missingCity?: string
+  missingCounty?: string
   missingState?: string
   missingCountry?: string
-  missingAge?: number
-  currentMinAge?: number
-  currentMaxAge?: number
+  age?: number               // age at time of disappearance
+  approxAge?: string
   race?: string
   sex?: string
   height?: string
   weight?: string
   hairColor?: string
   eyeColor?: string
-  hasPhoto?: boolean
-  photoUrl?: string
-  thumbnailUrl?: string
+  hasThumbnail?: boolean
+  hasPoster?: boolean
+  thumbnailUrl?: string      // relative: /photographs/NCMC2073366a1t.jpg
+  imageUrl?: string          // relative: /photographs/NCMC2073366a1.jpg
+  caseType?: string
+  isChild?: boolean
   url?: string
 }
 
 interface NcmecPublicApiResponse {
+  persons?: NcmecPublicCase[]
   subject?: NcmecPublicCase[]
-  total?: number
-  totalCount?: number
   cases?: NcmecPublicCase[]
+  totalRecords?: number
+  totalPages?: number
+  thisPage?: number
 }
 
 // ---------------------------------------------------------------
@@ -140,9 +146,9 @@ export class NcmecPublicAdapter extends BaseAdapter {
           break
         }
 
-        // The API may return cases in 'subject', 'cases', or other fields
+        // NCMEC returns data in 'persons' array (confirmed via API testing)
         const cases: NcmecPublicCase[] =
-          data.subject ?? data.cases ?? []
+          data.persons ?? data.subject ?? data.cases ?? []
 
         if (cases.length === 0) {
           logger.info({ source: this.sourceId, page }, 'NCMEC Public: no more records')
@@ -151,11 +157,8 @@ export class NcmecPublicAdapter extends BaseAdapter {
 
         allRecords.push(...cases)
 
-        const total = data.total ?? data.totalCount ?? 0
-        if (total > 0) {
-          const totalPages = Math.ceil(total / pageSize)
-          if (page >= totalPages) break
-        }
+        const totalPages = data.totalPages ?? 0
+        if (totalPages > 0 && page >= totalPages) break
 
         page++
         await this.sleep(2000) // 1 req/2s to be conservative
@@ -180,25 +183,20 @@ export class NcmecPublicAdapter extends BaseAdapter {
   normalize(raw: RawRecord): NormalizedCase {
     const record = raw as NcmecPublicCase
 
-    // External ID: use caseNumber or fall back to id
+    // External ID: orgPrefix + caseNumber (e.g. "NCMC2073366")
+    const prefix = record.orgPrefix ?? 'NCMC'
     const externalId =
-      record.caseNumber ??
-      (record.id != null ? `NCMEC-${record.id}` : `NCMEC-${Date.now()}`)
+      record.caseNumber
+        ? `${prefix}${record.caseNumber}`
+        : (record.id != null ? `NCMEC-${record.id}` : `NCMEC-${Date.now()}`)
 
-    // Build photo URL — NCMEC poster images follow a predictable pattern
-    let photoUrls: string[] = []
-    if (record.photoUrl) {
-      photoUrls.push(record.photoUrl)
+    // Build photo URL — NCMEC returns relative paths like /photographs/NCMC2073366a1.jpg
+    const NCMEC_BASE = 'https://api.missingkids.org'
+    const photoUrls: string[] = []
+    if (record.imageUrl) {
+      photoUrls.push(record.imageUrl.startsWith('http') ? record.imageUrl : `${NCMEC_BASE}${record.imageUrl}`)
     } else if (record.thumbnailUrl) {
-      photoUrls.push(record.thumbnailUrl)
-    } else if (record.hasPhoto && record.caseNumber) {
-      // Construct the poster image URL from the case number
-      const numericId = record.caseNumber.replace(/[^0-9]/g, '')
-      if (numericId) {
-        photoUrls.push(
-          `https://www.missingkids.org/content/dam/poster/ncmc/ncmc${numericId.padStart(6, '0')}.jpg`
-        )
-      }
+      photoUrls.push(record.thumbnailUrl.startsWith('http') ? record.thumbnailUrl : `${NCMEC_BASE}${record.thumbnailUrl}`)
     }
 
     const lastSeenLocation =
@@ -221,11 +219,8 @@ export class NcmecPublicAdapter extends BaseAdapter {
       description: null,
       gender: this.normalizeGender(record.sex ?? null),
       race: record.race ?? null,
-      age: record.missingAge ?? null,
-      ageRange:
-        record.currentMinAge != null && record.currentMaxAge != null
-          ? { min: record.currentMinAge, max: record.currentMaxAge }
-          : null,
+      age: record.age ?? null,
+      ageRange: null,
       heightCm: parseHeightString(record.height),
       weightKg: parseWeightString(record.weight),
       photoUrls,
@@ -233,7 +228,7 @@ export class NcmecPublicAdapter extends BaseAdapter {
       sourceUrl:
         record.url ??
         (record.caseNumber
-          ? `https://www.missingkids.org/case/${record.caseNumber}`
+          ? `https://www.missingkids.org/poster/${prefix}/${record.caseNumber}`
           : null),
       rawData: raw,
     }

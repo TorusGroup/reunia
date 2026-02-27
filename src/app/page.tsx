@@ -319,7 +319,7 @@ export default async function HomePage() {
             {/* Secondary CTAs */}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <Link
-                href="/search?mode=photo"
+                href="/face-search"
                 className="inline-flex items-center gap-2 px-5 py-3 rounded-lg text-sm font-semibold transition-all"
                 style={{
                   border: '2px solid var(--color-deep-indigo)',

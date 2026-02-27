@@ -350,6 +350,8 @@ export default function AdminIngestPage() {
           <div className="flex flex-wrap gap-3 text-sm">
             {[
               { href: '/search', label: 'Buscar Casos' },
+              { href: '/face-search', label: 'Busca por Foto' },
+              { href: '/admin/embeddings', label: 'Gerar Embeddings' },
               { href: '/api/v1/data-sources', label: 'API: Data Sources' },
               { href: '/api/v1/cases', label: 'API: Cases' },
               { href: '/api/v1/public/stats', label: 'API: Stats' },

@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "@vladmandic/face-api": "^1.7.13",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.13.0",
     "class-variance-authority": "^0.7.1",

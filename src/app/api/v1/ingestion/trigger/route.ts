@@ -21,9 +21,9 @@ export const maxDuration = 300
 // ---------------------------------------------------------------
 const triggerSchema = z.object({
   source: z.enum(['fbi', 'interpol', 'all']),
-  // Default 1 page per source to avoid HTTP timeout on initial sync
-  // FBI: 1 page = 20 records, ~2s | Interpol: 1 page = 20 notices, ~45s (detail + images per notice)
-  maxPages: z.number().int().min(1).max(20).optional().default(1),
+  // FBI: 1 page = 50 records, ~2s | Interpol: blocked (403), returns 0 gracefully
+  // Default 5 pages = ~250 FBI records, fits within 300s timeout
+  maxPages: z.number().int().min(1).max(50).optional().default(5),
 })
 
 // ---------------------------------------------------------------

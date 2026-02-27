@@ -100,14 +100,13 @@ async function main() {
   // Small pause to let DB operations settle
   await new Promise((r) => setTimeout(r, 1000))
 
-  // Step 2: FBI (fast, ~2s for 1 page of 20 records)
-  await triggerIngestion('fbi', 1)
+  // Step 2: FBI (fast, ~2s/page, 50 records/page, 5 pages = ~250 records)
+  await triggerIngestion('fbi', 5)
 
   // Small pause between sources
   await new Promise((r) => setTimeout(r, 2000))
 
-  // Step 3: Interpol (slow, ~45-60s for 1 page of 20 notices)
-  // Only run if not already ingested (check via args or always run)
+  // Step 3: Interpol (returns 0 gracefully — API blocks cloud IPs with 403)
   await triggerIngestion('interpol', 1)
 
   log('=== Auto-Ingest Complete ===')

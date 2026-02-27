@@ -107,7 +107,9 @@ export default function AdminIngestPage() {
 
   async function runIngestion(source: 'fbi' | 'interpol' | 'all') {
     setStatus('loading')
-    appendLog(`Iniciando ingestion: source=${source}, maxPages=1`)
+    // FBI: 5 pages x 50 records = ~250 records. Interpol: 1 page (may 403).
+    const pages = source === 'interpol' ? 1 : 5
+    appendLog(`Iniciando ingestion: source=${source}, maxPages=${pages}`)
     try {
       const res = await fetch('/api/v1/ingestion/trigger', {
         method: 'POST',
@@ -115,7 +117,7 @@ export default function AdminIngestPage() {
           'Content-Type': 'application/json',
           'x-admin-key': 'reunia-admin',
         },
-        body: JSON.stringify({ source, maxPages: 1 }),
+        body: JSON.stringify({ source, maxPages: pages }),
       })
       const data: TriggerResponse = await res.json()
       setLastResult(data)

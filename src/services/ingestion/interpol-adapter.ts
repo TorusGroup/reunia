@@ -89,7 +89,22 @@ export class InterpolAdapter extends BaseAdapter {
       try {
         const url = `${this.baseUrl}?ageMin=0&ageMax=17&resultPerPage=20&page=${currentPage}`
 
-        const response = await this.fetchWithRetry(url)
+        let response: Response
+        try {
+          response = await this.fetchWithRetry(url)
+        } catch (err) {
+          // Interpol blocks datacenter/cloud IPs with 403 Forbidden.
+          // Gracefully return whatever we have instead of crashing.
+          const msg = err instanceof Error ? err.message : String(err)
+          if (msg.includes('403')) {
+            logger.warn(
+              { source: this.sourceId },
+              'Interpol API returned 403 Forbidden — likely blocking cloud IPs. Skipping source.'
+            )
+            return allNotices as RawRecord[]
+          }
+          throw err
+        }
         const data = (await response.json()) as InterpolListResponse
 
         const notices = data._embedded?.notices ?? []

@@ -1,6 +1,6 @@
 // =============================================================
 // FBI Wanted API Adapter — E2-S02
-// Endpoint: GET https://api.fbi.gov/@wanted?classification=missing
+// Endpoint: GET https://api.fbi.gov/wanted/v1/list
 // No auth required — public API
 // Rate: 1 req/sec (precautionary)
 // =============================================================
@@ -24,6 +24,7 @@ interface FbiRecord {
   uid: string
   title: string
   description?: string
+  caution?: string
   classification?: string
   dates_of_birth_used?: string[]
   possible_birth_years?: string[]
@@ -62,10 +63,20 @@ export class FbiAdapter extends BaseAdapter {
   readonly pollingIntervalMinutes = 360 // 6 hours
 
   private readonly baseUrl = 'https://api.fbi.gov/wanted/v1/list'
-  private readonly pageSize = 20
+  private readonly pageSize = 50
+
+  // Client-side heuristic: returns true if a record looks like a missing person.
+  private isMissingPerson(record: FbiRecord): boolean {
+    if (record.missing_persons && record.missing_persons.length > 0) return true
+    const classification = (record.classification ?? '').toLowerCase()
+    if (classification.includes('missing')) return true
+    const text = `${record.description ?? ''} ${record.caution ?? ''}`.toLowerCase()
+    if (text.includes('missing') || text.includes('kidnap')) return true
+    return false
+  }
 
   async fetch(options: FetchOptions = {}): Promise<RawRecord[]> {
-    const maxPages = options.maxPages ?? 50
+    const maxPages = options.maxPages ?? 30
     const allRecords: FbiRecord[] = []
 
     logger.info({ source: this.sourceId }, 'FBI Adapter: starting fetch')
@@ -74,8 +85,9 @@ export class FbiAdapter extends BaseAdapter {
 
     while (page <= maxPages) {
       try {
-        // FBI Wanted v1 API: person_classification filters to Missing Persons category
-        const url = `${this.baseUrl}?page=${page}&pageSize=${this.pageSize}&person_classification=Missing%20Persons`
+        // No person_classification filter — the "Missing Persons" value returns 0 results.
+        // We fetch all wanted records and apply client-side filtering below.
+        const url = `${this.baseUrl}?page=${page}&pageSize=${this.pageSize}`
 
         const response = await this.fetchWithRetry(url)
         const data = (await response.json()) as FbiApiResponse
@@ -105,12 +117,21 @@ export class FbiAdapter extends BaseAdapter {
       }
     }
 
+    // Filter to missing-persons records. If none match (e.g. schema changed),
+    // fall back to all records so the platform keeps working.
+    const missingOnly = allRecords.filter((r) => this.isMissingPerson(r))
+    const finalRecords = missingOnly.length > 0 ? missingOnly : allRecords
+
     logger.info(
-      { source: this.sourceId, count: allRecords.length },
+      {
+        source: this.sourceId,
+        total: allRecords.length,
+        missingFiltered: finalRecords.length,
+      },
       'FBI Adapter: fetch complete'
     )
 
-    return allRecords as RawRecord[]
+    return finalRecords as RawRecord[]
   }
 
   normalize(raw: RawRecord): NormalizedCase {

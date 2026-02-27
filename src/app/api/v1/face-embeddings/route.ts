@@ -109,8 +109,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         where: { id: existing.id },
         data: {
           embedding: embeddingBuffer,
-          faceBbox: body.faceBbox ?? null,
-          faceConfidence: body.faceConfidence ?? null,
+          faceBbox: body.faceBbox ?? undefined,
+          faceConfidence: body.faceConfidence ?? undefined,
           modelName: 'face-api.js',
           modelVersion: 'ssd_mobilenetv1',
           isSearchable: true,
@@ -125,8 +125,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           modelName: 'face-api.js',
           modelVersion: 'ssd_mobilenetv1',
           embedding: embeddingBuffer,
-          faceBbox: body.faceBbox ?? null,
-          faceConfidence: body.faceConfidence ?? null,
+          faceBbox: body.faceBbox ?? undefined,
+          faceConfidence: body.faceConfidence ?? undefined,
           isSearchable: true,
         },
       })

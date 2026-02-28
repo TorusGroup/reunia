@@ -46,6 +46,7 @@ async function seedDataSources() {
   log('Seeding DataSources...')
   try {
     const res = await fetch(`${APP_URL}/api/v1/ingestion/seed`, {
+      headers: { 'x-admin-key': ADMIN_KEY },
       signal: AbortSignal.timeout(15000),
     })
     const data = await res.json()

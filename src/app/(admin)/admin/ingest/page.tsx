@@ -79,16 +79,33 @@ export default function AdminIngestPage() {
   const [lastResult, setLastResult] = useState<TriggerResponse | null>(null)
   const [seedResult, setSeedResult] = useState<SeedResponse | null>(null)
   const [log, setLog] = useState<string[]>([])
+  const [adminKey, setAdminKey] = useState('')
 
   function appendLog(msg: string) {
     setLog((prev) => [`[${new Date().toLocaleTimeString('pt-BR')}] ${msg}`, ...prev.slice(0, 49)])
   }
 
+  function getAuthHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {}
+    if (adminKey.trim()) {
+      headers['x-admin-key'] = adminKey.trim()
+    }
+    return headers
+  }
+
   async function runSeed() {
+    if (!adminKey.trim()) {
+      appendLog('ERRO: Informe a Admin Key antes de executar')
+      setSeedStatus('error')
+      return
+    }
     setSeedStatus('loading')
     appendLog('Seeding DataSources...')
     try {
-      const res = await fetch('/api/v1/ingestion/seed', { credentials: 'include' })
+      const res = await fetch('/api/v1/ingestion/seed', {
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      })
       const data: SeedResponse = await res.json()
       setSeedResult(data)
       if (data.success) {
@@ -105,16 +122,21 @@ export default function AdminIngestPage() {
     }
   }
 
-  async function runIngestion(source: 'fbi' | 'interpol' | 'all') {
+  async function runIngestion(source: 'fbi' | 'interpol' | 'ncmec' | 'amber' | 'all') {
+    if (!adminKey.trim()) {
+      appendLog('ERRO: Informe a Admin Key antes de executar')
+      setStatus('error')
+      return
+    }
     setStatus('loading')
-    // FBI: 5 pages x 50 records = ~250 records. Interpol: 1 page (may 403).
-    const pages = source === 'interpol' ? 1 : 5
+    const pages = source === 'interpol' ? 1 : source === 'ncmec' ? 20 : source === 'amber' ? 1 : 5
     appendLog(`Iniciando ingestion: source=${source}, maxPages=${pages}`)
     try {
       const res = await fetch('/api/v1/ingestion/trigger', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getAuthHeaders(),
         },
         credentials: 'include',
         body: JSON.stringify({ source, maxPages: pages }),
@@ -165,7 +187,7 @@ export default function AdminIngestPage() {
               Painel de Ingestion
             </h1>
             <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-              Importe casos reais das fontes externas para o banco de dados. Sem autenticação (modo teste).
+              Importe casos reais das fontes externas para o banco de dados.
             </p>
           </div>
           <Link
@@ -175,6 +197,28 @@ export default function AdminIngestPage() {
           >
             ← Voltar ao início
           </Link>
+        </div>
+
+        {/* Auth */}
+        <div style={card} className="mb-4">
+          <h2 className="text-base font-semibold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-deep-indigo)' }}>
+            Autenticação Admin
+          </h2>
+          <p className="text-sm mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+            Informe a chave ADMIN_INGESTION_KEY configurada no servidor.
+          </p>
+          <input
+            type="password"
+            value={adminKey}
+            onChange={(e) => setAdminKey(e.target.value)}
+            placeholder="Admin Ingestion Key"
+            className="w-full px-3 py-2 rounded-lg text-sm border outline-none focus:ring-2"
+            style={{
+              backgroundColor: 'var(--color-bg-primary)',
+              borderColor: adminKey ? 'var(--color-deep-indigo)' : 'var(--color-border)',
+              fontFamily: 'var(--font-mono)',
+            }}
+          />
         </div>
 
         {/* Step 1: Seed */}
@@ -239,6 +283,22 @@ export default function AdminIngestPage() {
               style={{ backgroundColor: '#7C3AED', fontFamily: 'var(--font-heading)' }}
             >
               Importar Interpol
+            </button>
+            <button
+              onClick={() => runIngestion('ncmec')}
+              disabled={status === 'loading'}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50"
+              style={{ backgroundColor: '#059669', fontFamily: 'var(--font-heading)' }}
+            >
+              Importar NCMEC (20pg)
+            </button>
+            <button
+              onClick={() => runIngestion('amber')}
+              disabled={status === 'loading'}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50"
+              style={{ backgroundColor: '#D97706', fontFamily: 'var(--font-heading)' }}
+            >
+              Importar AMBER
             </button>
             <button
               onClick={() => runIngestion('all')}

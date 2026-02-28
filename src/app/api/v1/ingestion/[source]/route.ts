@@ -7,14 +7,14 @@ import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { fbiAdapter } from '@/services/ingestion/fbi-adapter'
 import { interpolAdapter } from '@/services/ingestion/interpol-adapter'
-import { ncmecAdapter } from '@/services/ingestion/ncmec-adapter'
+import { ncmecPublicAdapter } from '@/services/ingestion/ncmec-public-adapter'
 import { amberAdapter } from '@/services/ingestion/amber-adapter'
 import type { ISourceAdapter } from '@/services/ingestion/base-adapter'
 
 const ADAPTERS: Record<string, ISourceAdapter> = {
   fbi: fbiAdapter,
   interpol: interpolAdapter,
-  ncmec: ncmecAdapter,
+  ncmec: ncmecPublicAdapter,
   amber: amberAdapter,
 }
 

@@ -2,12 +2,12 @@
 
 // =============================================================
 // Face Search Page — /face-search
-// Client Component: uses face-api.js (browser-side) to detect
-// face and generate 128-dim descriptor, then sends to server
-// for cosine similarity comparison against stored embeddings.
+// Refactored (F-01): Server-side ArcFace (512-dim) via Python service.
+// Browser uploads image → Server detects, embeds, searches via pgvector.
+// No biometric processing in browser. No face-api.js dependency.
 //
-// Architecture: Browser detects face → Server compares → Results
-// No biometrics stored from citizen uploads.
+// Architecture Decision: ADR-001 — Server-side ArcFace chosen over
+// browser face-api.js (128-dim). See docs/architecture/adr-face-search-architecture.md
 // =============================================================
 
 import { useRef, useState, useCallback } from 'react'
@@ -17,106 +17,88 @@ import { Footer } from '@/components/layout/footer'
 // ---- Types --------------------------------------------------
 
 interface FaceSearchMatch {
+  face_embedding_id: string
+  person_id: string
+  case_id: string
   similarity: number
-  caseId: string
-  caseNumber: string
-  personId: string
-  firstName: string | null
-  lastName: string | null
-  approximateAge: number | null
-  lastSeenLocation: string | null
-  photoUrl: string | null
-  source: string
+  confidence_tier: 'HIGH' | 'MEDIUM' | 'LOW' | 'REJECTED'
+  person_name: string | null
+  case_number: string
+  primary_photo_url: string | null
 }
 
-interface FaceSearchResult {
+interface FaceMatchResponse {
+  face_detected: boolean
+  face_confidence: number | null
+  face_quality: number | null
+  match_count: number
   matches: FaceSearchMatch[]
-  totalCompared: number
-  processingTimeMs: number
+  hitl_queued: number
+  processing_ms: number
   notice: string
 }
 
 type PageState =
   | 'idle'
-  | 'loading-models'
-  | 'detecting'
+  | 'uploading'
   | 'searching'
   | 'done'
   | 'error'
 
-const MODEL_URL =
-  'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'
-
 // ---- Helpers ------------------------------------------------
 
-function confidenceLabel(similarity: number): {
+function confidenceLabel(tier: string): {
   label: string
   color: string
   bg: string
 } {
-  if (similarity >= 0.8)
-    return { label: 'Alta', color: '#065F46', bg: '#D1FAE5' }
-  if (similarity >= 0.65)
-    return { label: 'Média', color: '#92400E', bg: '#FEF3C7' }
-  return { label: 'Baixa', color: '#1D4ED8', bg: '#DBEAFE' }
+  switch (tier) {
+    case 'HIGH':
+      return { label: 'Alta', color: '#065F46', bg: '#D1FAE5' }
+    case 'MEDIUM':
+      return { label: 'Media', color: '#92400E', bg: '#FEF3C7' }
+    case 'LOW':
+      return { label: 'Baixa', color: '#1D4ED8', bg: '#DBEAFE' }
+    default:
+      return { label: 'Muito Baixa', color: '#6B7280', bg: '#F3F4F6' }
+  }
 }
 
-function sourceLabel(source: string): string {
-  const map: Record<string, string> = {
-    fbi: 'FBI',
-    interpol: 'Interpol',
-    ncmec: 'NCMEC',
-    amber: 'AMBER',
-    platform: 'ReunIA',
-    other: 'Outro',
-  }
-  return map[source] ?? source.toUpperCase()
+function similarityPercent(similarity: number): string {
+  return `${Math.round(similarity * 100)}%`
+}
+
+/**
+ * Convert a File to base64 string (without the data:... prefix)
+ */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      // Remove the data:image/xxx;base64, prefix
+      const base64 = result.split(',')[1]
+      if (base64) {
+        resolve(base64)
+      } else {
+        reject(new Error('Failed to convert file to base64'))
+      }
+    }
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
 }
 
 // ---- Component ----------------------------------------------
 
 export default function FaceSearchPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const previewRef = useRef<HTMLImageElement>(null)
 
   const [pageState, setPageState] = useState<PageState>('idle')
   const [statusMessage, setStatusMessage] = useState('')
   const [preview, setPreview] = useState<string | null>(null)
-  const [results, setResults] = useState<FaceSearchResult | null>(null)
+  const [results, setResults] = useState<FaceMatchResponse | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [modelsLoaded, setModelsLoaded] = useState(false)
-
-  // ---- Load models (once) ------------------------------------
-  const loadModels = useCallback(async () => {
-    if (modelsLoaded) return true
-
-    setPageState('loading-models')
-    setStatusMessage('Carregando modelos de reconhecimento facial...')
-
-    try {
-      // Dynamic import — face-api.js only works in browser
-      const faceapi = await import('@vladmandic/face-api')
-
-      setStatusMessage('Carregando detector de rostos...')
-      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL)
-
-      setStatusMessage('Carregando detector de landmarks...')
-      await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL)
-
-      setStatusMessage('Carregando rede de reconhecimento...')
-      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-
-      setModelsLoaded(true)
-      return true
-    } catch (err) {
-      console.error('Failed to load face-api.js models:', err)
-      setErrorMessage(
-        'Falha ao carregar os modelos de reconhecimento facial. Verifique sua conexão e tente novamente.'
-      )
-      setPageState('error')
-      return false
-    }
-  }, [modelsLoaded])
 
   // ---- Handle file selection ---------------------------------
   const handleFileChange = useCallback(
@@ -130,7 +112,13 @@ export default function FaceSearchPage() {
 
       // Validate type
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-        setErrorMessage('Formato não suportado. Use JPG, PNG ou WEBP.')
+        setErrorMessage('Formato nao suportado. Use JPG, PNG ou WEBP.')
+        return
+      }
+
+      // Validate size (10MB max)
+      if (file.size > 10 * 1024 * 1024) {
+        setErrorMessage('Arquivo muito grande. Maximo 10MB.')
         return
       }
 
@@ -138,62 +126,56 @@ export default function FaceSearchPage() {
       const objectUrl = URL.createObjectURL(file)
       setPreview(objectUrl)
 
-      // Load models if needed
-      const loaded = await loadModels()
-      if (!loaded) return
-
-      // Detect face
-      setPageState('detecting')
-      setStatusMessage('Detectando rosto na imagem...')
+      // Convert to base64 and send to server
+      setPageState('uploading')
+      setStatusMessage('Preparando imagem...')
 
       try {
-        const faceapi = await import('@vladmandic/face-api')
+        const base64 = await fileToBase64(file)
 
-        // Create HTMLImageElement from file
-        const img = new Image()
-        img.src = objectUrl
-
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => resolve()
-          img.onerror = () => reject(new Error('Failed to load image'))
-        })
-
-        const detection = await faceapi
-          .detectSingleFace(img)
-          .withFaceLandmarks()
-          .withFaceDescriptor()
-
-        if (!detection) {
-          setErrorMessage(
-            'Nenhum rosto detectado na imagem. Use uma foto com o rosto claramente visível, bem iluminado e de frente.'
-          )
-          setPageState('error')
-          return
-        }
-
-        const descriptor = Array.from(detection.descriptor)
-
-        // Search on server
         setPageState('searching')
-        setStatusMessage(
-          `Rosto detectado (confiança: ${Math.round(detection.detection.score * 100)}%). Buscando correspondências...`
-        )
+        setStatusMessage('Analisando rosto e buscando correspondencias...')
 
-        const response = await fetch('/api/v1/face-search', {
+        const response = await fetch('/api/v1/face/match', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ descriptor, threshold: 0.4, maxResults: 10 }),
+          body: JSON.stringify({
+            image_base64: base64,
+            threshold: 0.55,
+            max_results: 10,
+          }),
         })
 
         const data = await response.json()
 
         if (!data.success) {
-          setErrorMessage(data.error?.message ?? 'Erro ao buscar correspondências.')
+          const msg = data.error?.message ?? 'Erro ao buscar correspondencias.'
+
+          // Special handling for no face detected
+          if (
+            data.error?.code === 'VALIDATION_ERROR' &&
+            msg.toLowerCase().includes('no face')
+          ) {
+            setErrorMessage(
+              'Nenhum rosto detectado na imagem. Use uma foto com o rosto claramente visivel, bem iluminado e de frente.'
+            )
+          } else if (data.error?.code === 'UNAUTHORIZED') {
+            setErrorMessage(
+              'Voce precisa estar logado para usar a busca facial. Faca login e tente novamente.'
+            )
+          } else if (data.error?.code === 'RATE_LIMIT_EXCEEDED') {
+            setErrorMessage(
+              'Muitas tentativas. Aguarde um minuto e tente novamente.'
+            )
+          } else {
+            setErrorMessage(msg)
+          }
+
           setPageState('error')
           return
         }
 
-        setResults(data.data as FaceSearchResult)
+        setResults(data.data as FaceMatchResponse)
         setPageState('done')
         setStatusMessage('')
       } catch (err) {
@@ -207,22 +189,20 @@ export default function FaceSearchPage() {
       // Reset file input so same file can be reselected
       e.target.value = ''
     },
-    [loadModels]
+    []
   )
 
   const handleReset = useCallback(() => {
+    if (preview) URL.revokeObjectURL(preview)
     setPreview(null)
     setResults(null)
     setErrorMessage(null)
     setPageState('idle')
     setStatusMessage('')
-    if (preview) URL.revokeObjectURL(preview)
   }, [preview])
 
   const isProcessing =
-    pageState === 'loading-models' ||
-    pageState === 'detecting' ||
-    pageState === 'searching'
+    pageState === 'uploading' || pageState === 'searching'
 
   // ---- CSS-in-JS styles (using design tokens) ----------------
   const cardStyle: React.CSSProperties = {
@@ -242,7 +222,7 @@ export default function FaceSearchPage() {
       >
         <div className="max-w-3xl mx-auto">
 
-        {/* ── Page Header ──────────────────────────────────────── */}
+        {/* Page Header */}
         <div className="mb-8">
           <p
             className="text-xs uppercase tracking-widest mb-1"
@@ -261,12 +241,12 @@ export default function FaceSearchPage() {
             Buscar por Foto
           </h1>
           <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-            Envie uma foto para buscar correspondências em nosso banco de casos ativos.
-            O reconhecimento facial é feito no seu navegador — a foto não é armazenada.
+            Envie uma foto para buscar correspondencias em nosso banco de casos ativos.
+            A analise facial e realizada por nossos servidores seguros — sua foto nao e armazenada.
           </p>
         </div>
 
-        {/* ── Upload Card ──────────────────────────────────────── */}
+        {/* Upload Card */}
         <div style={cardStyle} className="mb-6">
 
           {/* Upload zone or preview */}
@@ -332,13 +312,13 @@ export default function FaceSearchPage() {
                     className="text-sm mt-1"
                     style={{ color: 'var(--color-text-muted)' }}
                   >
-                    JPG, PNG ou WEBP — máximo 10MB
+                    JPG, PNG ou WEBP — maximo 10MB
                   </p>
                   <p
                     className="text-xs mt-1"
                     style={{ color: 'var(--color-text-muted)' }}
                   >
-                    Funciona melhor com fotos frontais, boa iluminação
+                    Funciona melhor com fotos frontais, boa iluminacao
                   </p>
                 </div>
               </button>
@@ -355,7 +335,6 @@ export default function FaceSearchPage() {
           ) : (
             <div style={{ position: 'relative' }}>
               <img
-                ref={previewRef}
                 src={preview}
                 alt="Foto selecionada para busca facial"
                 style={{
@@ -512,7 +491,7 @@ export default function FaceSearchPage() {
           )}
         </div>
 
-        {/* ── Ethical disclaimer ────────────────────────────────── */}
+        {/* Ethical disclaimer */}
         <div
           className="mb-6 p-4 rounded-lg text-sm"
           style={{
@@ -525,16 +504,16 @@ export default function FaceSearchPage() {
           <strong style={{ color: 'var(--color-deep-indigo)' }}>
             Aviso de privacidade:
           </strong>{' '}
-          O reconhecimento facial é processado inteiramente no seu navegador usando face-api.js.
-          Apenas um vetor matemático anônimo de 128 números é enviado ao servidor para comparação
-          — nenhuma imagem biométrica é armazenada. Todos os resultados passam por revisão humana
-          antes de qualquer ação.{' '}
+          O reconhecimento facial e processado em servidores seguros usando ArcFace (512-dim).
+          A foto enviada e analisada e imediatamente descartada — nenhuma imagem biometrica
+          do cidadao e armazenada. Todos os resultados passam por revisao humana
+          antes de qualquer acao.{' '}
           <strong style={{ color: 'var(--color-coral-hope)' }}>
-            Em caso de emergência: CVV 188 (24h, gratuito) | Disque 100
+            Em caso de emergencia: CVV 188 (24h, gratuito) | Disque 100
           </strong>
         </div>
 
-        {/* ── Results ──────────────────────────────────────────── */}
+        {/* Results */}
         {pageState === 'done' && results && (
           <div>
             {/* Summary bar */}
@@ -542,7 +521,7 @@ export default function FaceSearchPage() {
               className="mb-4 p-4 rounded-lg flex items-center justify-between flex-wrap gap-2"
               style={{
                 backgroundColor:
-                  results.matches.length > 0
+                  results.match_count > 0
                     ? 'var(--color-data-blue-light)'
                     : 'var(--color-bg-tertiary)',
                 border: '1px solid var(--color-border)',
@@ -555,25 +534,25 @@ export default function FaceSearchPage() {
                   style={{
                     fontFamily: 'var(--font-heading)',
                     color:
-                      results.matches.length > 0
+                      results.match_count > 0
                         ? 'var(--color-data-blue-dark)'
                         : 'var(--color-text-secondary)',
                   }}
                 >
-                  {results.matches.length > 0
-                    ? `${results.matches.length} correspondência${results.matches.length > 1 ? 's' : ''} encontrada${results.matches.length > 1 ? 's' : ''}`
-                    : 'Nenhuma correspondência encontrada'}
+                  {results.match_count > 0
+                    ? `${results.match_count} correspondencia${results.match_count > 1 ? 's' : ''} encontrada${results.match_count > 1 ? 's' : ''}`
+                    : 'Nenhuma correspondencia encontrada'}
                 </p>
                 <p
                   className="text-xs mt-0.5"
                   style={{ color: 'var(--color-text-muted)' }}
                 >
-                  Comparado com {results.totalCompared} caso
-                  {results.totalCompared !== 1 ? 's' : ''} em{' '}
-                  {results.processingTimeMs}ms
+                  Processado em {results.processing_ms}ms
+                  {results.face_confidence !== null &&
+                    ` | Confianca do rosto: ${Math.round(results.face_confidence * 100)}%`}
                 </p>
               </div>
-              {results.matches.length === 0 && (
+              {results.match_count === 0 && (
                 <p
                   className="text-sm"
                   style={{ color: 'var(--color-text-secondary)' }}
@@ -593,14 +572,14 @@ export default function FaceSearchPage() {
                     color: 'var(--color-text-muted)',
                   }}
                 >
-                  Resultados — revisão humana obrigatória antes de qualquer ação
+                  Resultados — revisao humana obrigatoria antes de qualquer acao
                 </p>
 
                 {results.matches.map((match, idx) => {
-                  const conf = confidenceLabel(match.similarity)
+                  const conf = confidenceLabel(match.confidence_tier)
                   return (
                     <div
-                      key={`${match.caseId}-${idx}`}
+                      key={`${match.case_id}-${idx}`}
                       style={{
                         backgroundColor: 'var(--color-bg-primary)',
                         border: '1px solid var(--color-border)',
@@ -622,10 +601,10 @@ export default function FaceSearchPage() {
                           backgroundColor: 'var(--color-bg-tertiary)',
                         }}
                       >
-                        {match.photoUrl ? (
+                        {match.primary_photo_url ? (
                           <img
-                            src={`/api/v1/proxy-image?url=${encodeURIComponent(match.photoUrl)}`}
-                            alt={`${match.firstName ?? ''} ${match.lastName ?? ''}`.trim() || 'Caso'}
+                            src={`/api/v1/proxy-image?url=${encodeURIComponent(match.primary_photo_url)}`}
+                            alt={match.person_name ?? 'Caso'}
                             style={{
                               width: '100%',
                               height: '100%',
@@ -675,18 +654,8 @@ export default function FaceSearchPage() {
                                 color: 'var(--color-deep-indigo)',
                               }}
                             >
-                              {[match.firstName, match.lastName]
-                                .filter(Boolean)
-                                .join(' ') || 'Nome não disponível'}
+                              {match.person_name || 'Nome nao disponivel'}
                             </p>
-                            {match.approximateAge !== null && (
-                              <p
-                                className="text-sm"
-                                style={{ color: 'var(--color-text-secondary)' }}
-                              >
-                                ~{match.approximateAge} anos
-                              </p>
-                            )}
                           </div>
 
                           {/* Confidence badge */}
@@ -699,31 +668,11 @@ export default function FaceSearchPage() {
                               whiteSpace: 'nowrap',
                             }}
                           >
-                            {Math.round(match.similarity * 100)}% — {conf.label}
+                            {similarityPercent(match.similarity)} — {conf.label}
                           </span>
                         </div>
 
                         <div className="mt-2 space-y-1">
-                          {match.lastSeenLocation && (
-                            <p
-                              className="text-xs flex items-center gap-1"
-                              style={{ color: 'var(--color-text-muted)' }}
-                            >
-                              <svg
-                                width="11"
-                                height="11"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                aria-hidden="true"
-                              >
-                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" />
-                                <circle cx="12" cy="10" r="3" />
-                              </svg>
-                              {match.lastSeenLocation}
-                            </p>
-                          )}
                           <p
                             className="text-xs"
                             style={{
@@ -731,13 +680,13 @@ export default function FaceSearchPage() {
                               fontFamily: 'var(--font-mono)',
                             }}
                           >
-                            {match.caseNumber} · {sourceLabel(match.source)}
+                            {match.case_number}
                           </p>
                         </div>
 
                         {/* View case link */}
                         <a
-                          href={`/case/${match.caseId}`}
+                          href={`/case/${match.case_id}`}
                           className="mt-3 inline-flex items-center gap-1 text-xs font-semibold transition-colors"
                           style={{
                             color: 'var(--color-coral-hope)',
@@ -774,8 +723,14 @@ export default function FaceSearchPage() {
                     color: 'var(--color-text-secondary)',
                   }}
                 >
-                  Todos os resultados passam por revisão humana antes de qualquer notificação.
-                  O algoritmo indica possibilidades — a decisão final é sempre de um humano.
+                  {results.hitl_queued > 0 && (
+                    <p className="mb-1">
+                      <strong>{results.hitl_queued} resultado{results.hitl_queued > 1 ? 's' : ''}</strong>{' '}
+                      enviado{results.hitl_queued > 1 ? 's' : ''} para revisao humana.
+                    </p>
+                  )}
+                  Todos os resultados passam por revisao humana antes de qualquer notificacao.
+                  O algoritmo indica possibilidades — a decisao final e sempre de um humano.
                 </div>
               </div>
             )}

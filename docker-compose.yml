@@ -84,6 +84,29 @@ services:
     networks:
       - reunia-network
 
+  # ---------------------------------------------------------------
+  # BullMQ Worker Process — D-01 Sprint 2
+  # Standalone process that consumes all job queues
+  # ---------------------------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reunia-worker
+    restart: unless-stopped
+    command: npm run worker
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://reunia_app:reunia_dev_password@postgres:5432/reunia_dev
+      - REDIS_URL=redis://:reunia_redis_password@redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - reunia-network
+
 volumes:
   postgres_data:
     name: reunia_postgres_data

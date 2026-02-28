@@ -56,7 +56,7 @@ AS $$
   SELECT
     fe.id AS face_id,
     fe.person_id,
-    p."caseId" AS case_id,
+    p."case_id" AS case_id,
     (1 - (fe.embedding <=> query_embedding))::float AS similarity
   FROM "face_embeddings" fe
   JOIN persons p ON p.id = fe.person_id
@@ -94,7 +94,7 @@ BEGIN
   SELECT
     fe.id AS face_id,
     fe.person_id,
-    p."caseId" AS case_id,
+    p."case_id" AS case_id,
     (1 - (fe.embedding <=> query_embedding))::float AS similarity
   FROM "face_embeddings" fe
   JOIN persons p ON p.id = fe.person_id

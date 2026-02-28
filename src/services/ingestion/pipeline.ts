@@ -144,7 +144,7 @@ export async function runIngestion(
         recordsFailed: result.recordsFailed,
         durationMs: result.durationMs,
       },
-      'Pipeline: ingestion completed successfully'
+      `Ingestion complete: ${result.recordsInserted} new, ${result.recordsUpdated} existing, ${result.recordsSkipped} duplicates, ${result.recordsFailed} errors`
     )
   } catch (err) {
     // Top-level failure: log error and mark as failed
@@ -227,7 +227,7 @@ async function processRecord(
           caseId: deduplication.existingCaseId,
           sourceSlug: String(normalized.source),
           sourceId: normalized.externalId,
-          sourceUrl: normalized.sourceUrl ?? undefined,
+          sourceUrl: normalized.sourceUrl ?? null,
           fetchedAt: new Date(),
           rawData: normalized.rawData,
         },
@@ -267,7 +267,7 @@ async function createNewCase(normalized: NormalizedCase, qualityScore: number): 
           create: {
             sourceSlug: String(normalized.source),
             sourceId: normalized.externalId,
-            sourceUrl: normalized.sourceUrl ?? undefined,
+            sourceUrl: normalized.sourceUrl ?? null,
             fetchedAt: new Date(),
             rawData: normalized.rawData,
           },

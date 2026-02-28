@@ -43,18 +43,6 @@ const nextConfig: NextConfig = {
   // --- Server external packages (Node.js only, not bundled by webpack) ---
   serverExternalPackages: ['pino', 'pino-pretty', '@prisma/client'],
 
-  // --- Webpack: exclude browser-only packages from server bundle ---
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      // face-api.js uses browser APIs (Canvas, HTMLImageElement) — never bundle server-side
-      config.externals = [
-        ...(Array.isArray(config.externals) ? config.externals : []),
-        '@vladmandic/face-api',
-      ]
-    }
-    return config
-  },
-
   // --- Logging ---
   logging: {
     fetches: {

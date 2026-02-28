@@ -9,7 +9,8 @@ import { logger } from '@/lib/logger'
 import { runIngestion } from '@/services/ingestion/pipeline'
 import { fbiAdapter } from '@/services/ingestion/fbi-adapter'
 import { interpolAdapter } from '@/services/ingestion/interpol-adapter'
-import { ncmecAdapter } from '@/services/ingestion/ncmec-adapter'
+// D-02: Use public adapter (no auth required) instead of private mock adapter
+import { ncmecPublicAdapter } from '@/services/ingestion/ncmec-public-adapter'
 import { amberAdapter } from '@/services/ingestion/amber-adapter'
 import type { ISourceAdapter } from '@/services/ingestion/base-adapter'
 import type { CaseSource } from '@prisma/client'
@@ -20,7 +21,7 @@ import type { CaseSource } from '@prisma/client'
 const QUEUE_ADAPTER_MAP: Record<string, ISourceAdapter> = {
   'ingestion-fbi': fbiAdapter,
   'ingestion-interpol': interpolAdapter,
-  'ingestion-ncmec': ncmecAdapter,
+  'ingestion-ncmec': ncmecPublicAdapter,
   'ingestion-amber': amberAdapter,
 }
 

@@ -35,11 +35,31 @@ export async function GET(): Promise<NextResponse<HealthCheckResponse>> {
         : { status: 'unhealthy' as const, error: String(faceEngineHealth.reason) },
   }
 
-  // Overall status: unhealthy if DB is down, degraded if other services are down
+  // Face Engine is an optional service (separate Python microservice).
+  // When not deployed/configured (default localhost URL), it should NOT
+  // degrade the overall status — it's expected to be unavailable until
+  // the face service is deployed separately.
+  const faceEngineUrl = process.env.FACE_ENGINE_URL ?? ''
+  const faceEngineIsOptional =
+    services.faceEngine.status === 'unhealthy' &&
+    (!faceEngineUrl || faceEngineUrl.includes('localhost'))
+
+  if (faceEngineIsOptional) {
+    services.faceEngine = {
+      status: 'healthy' as const,
+      latencyMs: 0,
+      // @ts-expect-error — adding info field for clarity
+      info: 'not_deployed (optional service — face search unavailable)',
+    }
+  }
+
+  // Overall status: unhealthy if DB is down, degraded if core services are down
+  // Face Engine with default URL is excluded from degradation check
   const overallStatus =
     services.database.status === 'unhealthy'
       ? 'unhealthy'
-      : services.redis.status === 'unhealthy' || services.faceEngine.status === 'unhealthy'
+      : services.redis.status === 'unhealthy' ||
+        (!faceEngineIsOptional && services.faceEngine.status === 'unhealthy')
       ? 'degraded'
       : 'healthy'
 

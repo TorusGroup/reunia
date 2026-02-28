@@ -3,10 +3,10 @@
 // =============================================================
 // SearchPageClient — Interactive search UI
 // Filters sidebar + results list + pagination
-// Sprint 4, E5
+// Sprint 4 -> 5: Replaced mock data with live /api/v1/search calls
 // =============================================================
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { SearchBar } from '@/components/search/search-bar'
 import { SearchFilters } from '@/components/search/search-filters'
@@ -14,63 +14,43 @@ import { SearchResults } from '@/components/search/search-results'
 import { Pagination } from '@/components/common/pagination'
 import type { CaseSummary, CaseSearchFilters } from '@/types/cases'
 
-// Mock data for Sprint 4 — will be replaced by API call in Sprint 5
-const MOCK_CASES: CaseSummary[] = [
-  {
-    id: '550e8400-e29b-41d4-a716-446655440001',
-    caseNumber: 'REUNIA-2026-000001',
-    caseType: 'missing', status: 'active', urgency: 'high',
-    reportedAt: '2026-02-24T00:00:00Z', lastSeenAt: '2026-02-24T14:30:00Z',
-    lastSeenLocation: 'São Paulo, SP', lastSeenCountry: 'BR',
-    source: 'platform', dataQuality: 85,
-    persons: [{ id: 'p1', role: 'missing_child', firstName: 'Maria', lastName: 'Santos', approximateAge: 8, gender: 'female' }],
-    createdAt: '2026-02-24T00:00:00Z', updatedAt: '2026-02-24T00:00:00Z',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440002',
-    caseNumber: 'REUNIA-2026-000002',
-    caseType: 'missing', status: 'active', urgency: 'critical',
-    reportedAt: '2026-02-15T00:00:00Z', lastSeenAt: '2026-02-15T09:00:00Z',
-    lastSeenLocation: 'Rio de Janeiro, RJ', lastSeenCountry: 'BR',
-    source: 'ncmec', dataQuality: 92,
-    persons: [{ id: 'p2', role: 'missing_child', firstName: 'João', lastName: 'Pereira', approximateAge: 12, gender: 'male' }],
-    createdAt: '2026-02-15T00:00:00Z', updatedAt: '2026-02-15T00:00:00Z',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440003',
-    caseNumber: 'REUNIA-2026-000003',
-    caseType: 'missing', status: 'active', urgency: 'high',
-    reportedAt: '2026-02-25T00:00:00Z', lastSeenAt: '2026-02-25T16:00:00Z',
-    lastSeenLocation: 'Campinas, SP', lastSeenCountry: 'BR',
-    source: 'platform', dataQuality: 78,
-    persons: [{ id: 'p3', role: 'missing_child', firstName: 'Ana', lastName: 'Lima', approximateAge: 6, gender: 'female' }],
-    createdAt: '2026-02-25T00:00:00Z', updatedAt: '2026-02-25T00:00:00Z',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440004',
-    caseNumber: 'REUNIA-2026-000004',
-    caseType: 'missing', status: 'active', urgency: 'standard',
-    reportedAt: '2026-02-19T00:00:00Z', lastSeenAt: '2026-02-19T11:00:00Z',
-    lastSeenLocation: 'Brasília, DF', lastSeenCountry: 'BR',
-    source: 'fbi', dataQuality: 88,
-    persons: [{ id: 'p4', role: 'missing_child', firstName: 'Pedro', lastName: 'Mendes', approximateAge: 14, gender: 'male' }],
-    createdAt: '2026-02-19T00:00:00Z', updatedAt: '2026-02-19T00:00:00Z',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440005',
-    caseNumber: 'REUNIA-2026-000005',
-    caseType: 'missing', status: 'active', urgency: 'high',
-    reportedAt: '2026-02-23T00:00:00Z', lastSeenAt: '2026-02-23T08:00:00Z',
-    lastSeenLocation: 'Belo Horizonte, MG', lastSeenCountry: 'BR',
-    source: 'disque100', dataQuality: 80,
-    persons: [{ id: 'p5', role: 'missing_child', firstName: 'Luiza', lastName: 'Costa', approximateAge: 10, gender: 'female' }],
-    createdAt: '2026-02-23T00:00:00Z', updatedAt: '2026-02-23T00:00:00Z',
-  },
-]
-
 interface SearchPageClientProps {
   initialQuery: string
   initialPage: number
+}
+
+// ---------------------------------------------------------------
+// Map API response to CaseSummary format
+// ---------------------------------------------------------------
+function mapApiResultToCaseSummary(result: Record<string, unknown>): CaseSummary {
+  const persons = (result.persons as Array<Record<string, unknown>> | undefined) ?? []
+
+  return {
+    id: result.id as string,
+    caseNumber: result.caseNumber as string,
+    caseType: (result.caseType ?? 'missing') as CaseSummary['caseType'],
+    status: (result.status ?? 'active') as CaseSummary['status'],
+    urgency: (result.urgency ?? 'standard') as CaseSummary['urgency'],
+    reportedAt: String(result.reportedAt ?? ''),
+    lastSeenAt: result.lastSeenAt ? String(result.lastSeenAt) : undefined,
+    lastSeenLocation: result.lastSeenLocation ? String(result.lastSeenLocation) : undefined,
+    lastSeenCountry: result.lastSeenCountry ? String(result.lastSeenCountry) : undefined,
+    source: (result.source ?? 'other') as CaseSummary['source'],
+    dataQuality: (result.dataQuality as number) ?? 0,
+    persons: persons.map((p) => ({
+      id: p.id as string,
+      role: (p.role ?? 'missing_child') as CaseSummary['persons'][number]['role'],
+      firstName: p.firstName ? String(p.firstName) : undefined,
+      lastName: p.lastName ? String(p.lastName) : undefined,
+      nickname: p.nickname ? String(p.nickname) : undefined,
+      approximateAge: p.approximateAge != null ? Number(p.approximateAge) : undefined,
+      dateOfBirth: p.dateOfBirth ? String(p.dateOfBirth) : undefined,
+      gender: (p.gender ?? undefined) as CaseSummary['persons'][number]['gender'],
+      primaryImageUrl: (p.thumbnailUrl ?? p.storageUrl ?? p.primaryImageUrl ?? undefined) as string | undefined,
+    })),
+    createdAt: String(result.createdAt ?? result.reportedAt ?? ''),
+    updatedAt: String(result.updatedAt ?? result.reportedAt ?? ''),
+  }
 }
 
 export function SearchPageClient({ initialQuery, initialPage }: SearchPageClientProps) {
@@ -81,45 +61,96 @@ export function SearchPageClient({ initialQuery, initialPage }: SearchPageClient
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(initialPage)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const router = useRouter()
   const pathname = usePathname()
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   const LIMIT = 10
   const totalPages = Math.ceil(total / LIMIT)
 
-  // Filter + search mock data
-  const runSearch = useCallback((q: string, f: CaseSearchFilters, p: number) => {
-    setIsLoading(true)
-    // Simulate network delay
-    setTimeout(() => {
-      let results = [...MOCK_CASES]
+  // Build query string for the /api/v1/search endpoint
+  const runSearch = useCallback(async (q: string, f: CaseSearchFilters, p: number) => {
+    // Abort previous request if still in-flight
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
 
-      if (q) {
-        const lower = q.toLowerCase()
-        results = results.filter((c) =>
-          c.persons.some((person) => {
-            const name = `${person.firstName ?? ''} ${person.lastName ?? ''}`.toLowerCase()
-            return name.includes(lower) || c.caseNumber.toLowerCase().includes(lower)
-          })
-        )
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const params = new URLSearchParams()
+      if (q) params.set('q', q)
+      params.set('page', String(p))
+      params.set('limit', String(LIMIT))
+
+      // Map filters to API query params
+      if (f.source) params.set('source', f.source)
+      if (f.status) params.set('status', f.status)
+      if (f.gender) params.set('gender', f.gender)
+      if (f.ageMin != null) params.set('ageMin', String(f.ageMin))
+      if (f.ageMax != null) params.set('ageMax', String(f.ageMax))
+      if (f.country) params.set('country', f.country)
+      if (f.caseType) params.set('caseType', f.caseType)
+      if (f.urgency) params.set('urgency', f.urgency)
+
+      const response = await fetch(`/api/v1/search?${params.toString()}`, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      })
+
+      if (!response.ok) {
+        throw new Error(`Erro ao buscar: ${response.status}`)
       }
 
-      if (f.source) results = results.filter((c) => c.source === f.source)
-      if (f.status) results = results.filter((c) => c.status === f.status)
-      if (f.gender) results = results.filter((c) => c.persons.some((person) => person.gender === f.gender))
-      if (f.ageMin != null) results = results.filter((c) => c.persons.some((p) => (p.approximateAge ?? 0) >= f.ageMin!))
-      if (f.ageMax != null) results = results.filter((c) => c.persons.some((p) => (p.approximateAge ?? 99) <= f.ageMax!))
+      const json = await response.json() as {
+        success: boolean
+        data?: {
+          results: Array<Record<string, unknown>>
+          total: number
+          page: number
+          totalPages: number
+        }
+        error?: { message: string }
+      }
 
-      setTotal(results.length)
-      setCases(results.slice((p - 1) * LIMIT, p * LIMIT))
+      if (!json.success || !json.data) {
+        throw new Error(json.error?.message ?? 'Erro desconhecido na busca')
+      }
+
+      const mapped = json.data.results.map(mapApiResultToCaseSummary)
+      setCases(mapped)
+      setTotal(json.data.total)
+    } catch (err) {
+      // Ignore abort errors (user navigated / new search started)
+      if (err instanceof Error && err.name === 'AbortError') return
+
+      const message = err instanceof Error ? err.message : 'Erro ao buscar casos'
+      setError(message)
+      setCases([])
+      setTotal(0)
+    } finally {
       setIsLoading(false)
-    }, 300)
+    }
   }, [])
 
   useEffect(() => {
     runSearch(query, filters, page)
   }, [query, filters, page, runSearch])
+
+  // Cleanup abort controller on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+    }
+  }, [])
 
   function handleSearch(q: string) {
     setQuery(q)
@@ -164,6 +195,8 @@ export function SearchPageClient({ initialQuery, initialPage }: SearchPageClient
         >
           {isLoading
             ? 'Buscando...'
+            : error
+            ? error
             : query
             ? `${total} resultado${total !== 1 ? 's' : ''} para "${query}"`
             : `${total} caso${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}`}

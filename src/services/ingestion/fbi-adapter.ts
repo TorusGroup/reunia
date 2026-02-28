@@ -26,6 +26,8 @@ interface FbiRecord {
   description?: string
   caution?: string
   classification?: string
+  poster_classification?: string
+  subjects?: string[]
   dates_of_birth_used?: string[]
   possible_birth_years?: string[]
   height_min?: number
@@ -65,13 +67,33 @@ export class FbiAdapter extends BaseAdapter {
   private readonly baseUrl = 'https://api.fbi.gov/wanted/v1/list'
   private readonly pageSize = 50
 
-  // Client-side heuristic: returns true if a record looks like a missing person.
+  // Client-side heuristic: returns true if a record is a missing/kidnapped person.
+  //
+  // Uses structured FBI API fields (poster_classification, subjects) instead of
+  // free-text search in description/caution — the old approach matched CRIMINALS
+  // who committed kidnapping (e.g. Iranian intelligence operatives) rather than
+  // the actual missing victims.
+  //
+  // Relevant poster_classification values: "missing", "kidnapping"
+  // Relevant subjects: "Kidnappings and Missing Persons", "ViCAP Missing Persons",
+  //                     "ViCAP Unidentified Persons"
   private isMissingPerson(record: FbiRecord): boolean {
+    // Explicit missing_persons array (rarely populated but authoritative)
     if (record.missing_persons && record.missing_persons.length > 0) return true
-    const classification = (record.classification ?? '').toLowerCase()
-    if (classification.includes('missing')) return true
-    const text = `${record.description ?? ''} ${record.caution ?? ''}`.toLowerCase()
-    if (text.includes('missing') || text.includes('kidnap')) return true
+
+    // poster_classification is the primary structured indicator
+    const posterClass = (record.poster_classification ?? '').toLowerCase()
+    if (posterClass === 'missing' || posterClass === 'kidnapping') return true
+
+    // subjects array contains category tags
+    const subjects = (record.subjects ?? []).map((s) => s.toLowerCase())
+    const missingSubjects = [
+      'kidnappings and missing persons',
+      'vicap missing persons',
+      'vicap unidentified persons',
+    ]
+    if (subjects.some((s) => missingSubjects.includes(s))) return true
+
     return false
   }
 

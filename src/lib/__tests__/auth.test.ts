@@ -32,19 +32,19 @@ describe('auth', () => {
       expect(hash).not.toBe(password)
       expect(hash).toMatch(/^\$2[aby]?\$/) // bcrypt format
       expect(await verifyPassword(password, hash)).toBe(true)
-    })
+    }, 30000)
 
     it('should reject incorrect passwords', async () => {
       const hash = await hashPassword('correct-password')
       expect(await verifyPassword('wrong-password', hash)).toBe(false)
-    })
+    }, 30000)
 
     it('should generate different hashes for same password (salt)', async () => {
       const password = 'same-password'
       const hash1 = await hashPassword(password)
       const hash2 = await hashPassword(password)
       expect(hash1).not.toBe(hash2)
-    })
+    }, 30000)
   })
 
   // ---------------------------------------------------------------

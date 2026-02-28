@@ -140,10 +140,10 @@ export class FbiAdapter extends BaseAdapter {
       }
     }
 
-    // Filter to missing-persons records. If none match (e.g. schema changed),
-    // fall back to all records so the platform keeps working.
-    const missingOnly = allRecords.filter((r) => this.isMissingPerson(r))
-    const finalRecords = missingOnly.length > 0 ? missingOnly : allRecords
+    // Filter to missing-persons records ONLY. Never fall back to all records —
+    // that would import criminals (kidnappers, fugitives) into a missing children platform.
+    // If none match (e.g. schema changed), return empty — better no data than wrong data.
+    const finalRecords = allRecords.filter((r) => this.isMissingPerson(r))
 
     logger.info(
       {

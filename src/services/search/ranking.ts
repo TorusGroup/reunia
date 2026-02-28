@@ -38,27 +38,30 @@ export const SOURCE_QUALITY_WEIGHT: Record<string, number> = {
 export type SortOption = 'relevance' | 'date' | 'name' | 'quality'
 
 export function buildOrderByClause(sort: SortOption, hasTextQuery: boolean): string {
+  // NOTE: These ORDER BY clauses are applied to the OUTER query that selects
+  // from the "ranked" CTE. Column references must NOT use the "c." table prefix
+  // because "c" is only in scope inside the CTE, not in the outer query.
   switch (sort) {
     case 'relevance':
       if (hasTextQuery) {
         // ts_rank_cd is injected by the search engine query
-        return 'ORDER BY rank DESC, c.data_quality DESC, urgency_order ASC, c.reported_at DESC'
+        return 'ORDER BY rank DESC, data_quality DESC, urgency_order ASC, reported_at DESC'
       }
       // No text query: fall through to quality
-      return 'ORDER BY c.data_quality DESC, urgency_order ASC, c.reported_at DESC'
+      return 'ORDER BY data_quality DESC, urgency_order ASC, reported_at DESC'
 
     case 'date':
-      return 'ORDER BY c.reported_at DESC, c.data_quality DESC'
+      return 'ORDER BY reported_at DESC, data_quality DESC'
 
     case 'name':
       // Sort by primary person name ascending
-      return 'ORDER BY name_sort ASC, c.reported_at DESC'
+      return 'ORDER BY name_sort ASC, reported_at DESC'
 
     case 'quality':
-      return 'ORDER BY c.data_quality DESC, urgency_order ASC, c.reported_at DESC'
+      return 'ORDER BY data_quality DESC, urgency_order ASC, reported_at DESC'
 
     default:
-      return 'ORDER BY c.data_quality DESC, c.reported_at DESC'
+      return 'ORDER BY data_quality DESC, reported_at DESC'
   }
 }
 

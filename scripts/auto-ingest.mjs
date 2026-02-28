@@ -106,8 +106,20 @@ async function main() {
   // Small pause between sources
   await new Promise((r) => setTimeout(r, 2000))
 
-  // Step 3: Interpol (returns 0 gracefully — API blocks cloud IPs with 403)
+  // Step 3: NCMEC (public, no auth, 25 records/page — fetch 20 pages = ~500 records)
+  await triggerIngestion('ncmec', 20)
+
+  // Small pause between sources
+  await new Promise((r) => setTimeout(r, 2000))
+
+  // Step 4: Interpol (returns 0 gracefully — API blocks cloud IPs with 403)
   await triggerIngestion('interpol', 1)
+
+  // Small pause between sources
+  await new Promise((r) => setTimeout(r, 2000))
+
+  // Step 5: AMBER (RSS feed — real-time alerts, usually few or zero items)
+  await triggerIngestion('amber', 1)
 
   log('=== Auto-Ingest Complete ===')
   process.exit(0)

@@ -115,11 +115,11 @@ export class NcmecPublicAdapter extends BaseAdapter {
     'https://api.missingkids.org/missingkids/servlet/JSONDataServlet'
 
   async fetch(options: FetchOptions = {}): Promise<RawRecord[]> {
-    const maxPages = options.maxPages ?? 5
+    const maxPages = options.maxPages ?? 10
     const pageSize = 25
     const allRecords: NcmecPublicCase[] = []
 
-    logger.info({ source: this.sourceId }, 'NCMEC Public Adapter: starting fetch')
+    logger.info({ source: this.sourceId, maxPages }, 'NCMEC Public Adapter: starting fetch')
 
     let page = options.page ?? 1
 

@@ -118,16 +118,39 @@ async function getRecentCasesFromDb(): Promise<CaseSummary[]> {
 // ---------------------------------------------------------------
 async function getStatsFromDb(): Promise<{
   activeCases: number
+  casesWithPhotos: number
   sources: number
+  lastSync: Date | null
 }> {
   try {
-    const [activeCases, distinctSources] = await Promise.all([
+    const [activeCases, casesWithPhotos, distinctSources, lastIngestion] = await Promise.all([
       db.case.count({ where: { status: 'active' } }),
+      db.case.count({
+        where: {
+          status: 'active',
+          persons: {
+            some: {
+              role: 'missing_child',
+              images: { some: {} },
+            },
+          },
+        },
+      }),
       db.case.groupBy({ by: ['source'], where: { status: 'active' } }),
+      db.ingestionLog.findFirst({
+        where: { status: 'success' },
+        orderBy: { completedAt: 'desc' },
+        select: { completedAt: true },
+      }),
     ])
-    return { activeCases, sources: distinctSources.length }
+    return {
+      activeCases,
+      casesWithPhotos,
+      sources: distinctSources.length,
+      lastSync: lastIngestion?.completedAt ?? null,
+    }
   } catch {
-    return { activeCases: 0, sources: 0 }
+    return { activeCases: 0, casesWithPhotos: 0, sources: 0, lastSync: null }
   }
 }
 
@@ -191,6 +214,18 @@ export default async function HomePage() {
   // P-01: Use real DB data only — no mock/hardcoded fallbacks
   const recentCases = dbCases
 
+  // Format last sync date
+  const lastSyncLabel = dbStats.lastSync
+    ? new Intl.DateTimeFormat('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'America/Sao_Paulo',
+      }).format(dbStats.lastSync)
+    : null
+
   // Stats from real database — show actual numbers, never fake ones
   const stats = [
     {
@@ -199,9 +234,20 @@ export default async function HomePage() {
       sublabel: 'em bases de dados integradas',
     },
     {
+      value: formatNumber(dbStats.casesWithPhotos),
+      label: 'Com foto',
+      sublabel: 'para reconhecimento facial',
+    },
+    {
       value: dbStats.sources > 0 ? String(dbStats.sources) : '—',
       label: 'Fontes de dados',
       sublabel: 'FBI, NCMEC e mais',
+    },
+    {
+      value: lastSyncLabel ?? '—',
+      label: 'Ultima sincronizacao',
+      sublabel: 'dados atualizados automaticamente',
+      mono: false,
     },
   ]
 
@@ -351,13 +397,14 @@ export default async function HomePage() {
           aria-label="Estatísticas de impacto"
         >
           <div className="max-w-5xl mx-auto">
-            <div className="grid grid-cols-2 gap-8 max-w-2xl mx-auto">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
               {stats.map((stat) => (
                 <StatCard
                   key={stat.label}
                   value={stat.value}
                   label={stat.label}
                   sublabel={stat.sublabel}
+                  mono={'mono' in stat ? (stat.mono as boolean) : true}
                 />
               ))}
             </div>

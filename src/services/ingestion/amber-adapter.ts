@@ -15,7 +15,8 @@ import type { CaseSource } from '@prisma/client'
 // ---------------------------------------------------------------
 const AMBER_RSS_FEEDS = [
   'https://www.amberalert.gov/feed/rss',
-  // NCMEC AMBER feed (when API key available, richer data comes from ncmec-adapter)
+  // NCMEC AMBER RSS feed (public, no auth required)
+  'https://www.missingkids.org/missingkids/servlet/RSSServlet',
   // State-specific feeds can be added here
 ]
 

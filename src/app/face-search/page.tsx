@@ -2,12 +2,19 @@
 
 // =============================================================
 // Face Search Page — /face-search
-// Refactored (F-01): Server-side ArcFace (512-dim) via Python service.
-// Browser uploads image → Server detects, embeds, searches via pgvector.
-// No biometric processing in browser. No face-api.js dependency.
+// Sprint 4 (FS-03): Complete face search E2E UI
 //
-// Architecture Decision: ADR-001 — Server-side ArcFace chosen over
-// browser face-api.js (128-dim). See docs/architecture/adr-face-search-architecture.md
+// Architecture: Server-side face matching via /api/v1/face/match
+// - Python ArcFace (512-dim) when available
+// - JS-native fallback when Python service is down
+// - All matches go through HITL queue (NON-NEGOTIABLE)
+//
+// Features:
+// - Drag & drop or click to upload
+// - Image preview with processing overlay
+// - Result grid with confidence badges
+// - Error states with helpful guidance
+// - WCAG AA accessible
 // =============================================================
 
 import { useRef, useState, useCallback } from 'react'
@@ -93,103 +100,137 @@ function fileToBase64(file: File): Promise<string> {
 
 export default function FaceSearchPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const dropZoneRef = useRef<HTMLDivElement>(null)
 
   const [pageState, setPageState] = useState<PageState>('idle')
   const [statusMessage, setStatusMessage] = useState('')
   const [preview, setPreview] = useState<string | null>(null)
   const [results, setResults] = useState<FaceMatchResponse | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [isDragOver, setIsDragOver] = useState(false)
+
+  // ---- Process image (shared by file input and drag-drop) ----
+  const processImage = useCallback(async (file: File) => {
+    // Reset state
+    setResults(null)
+    setErrorMessage(null)
+
+    // Validate type
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setErrorMessage('Formato nao suportado. Use JPG, PNG ou WEBP.')
+      setPageState('error')
+      return
+    }
+
+    // Validate size (10MB max)
+    if (file.size > 10 * 1024 * 1024) {
+      setErrorMessage('Arquivo muito grande. Maximo 10MB.')
+      setPageState('error')
+      return
+    }
+
+    // Show preview
+    const objectUrl = URL.createObjectURL(file)
+    setPreview(objectUrl)
+
+    // Convert to base64 and send to server
+    setPageState('uploading')
+    setStatusMessage('Preparando imagem...')
+
+    try {
+      const base64 = await fileToBase64(file)
+
+      setPageState('searching')
+      setStatusMessage('Analisando rosto e buscando correspondencias...')
+
+      const response = await fetch('/api/v1/face/match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image_base64: base64,
+          threshold: 0.55,
+          max_results: 10,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!data.success) {
+        const msg = data.error?.message ?? 'Erro ao buscar correspondencias.'
+
+        // Special handling for no face detected
+        if (
+          data.error?.code === 'VALIDATION_ERROR' &&
+          msg.toLowerCase().includes('no face')
+        ) {
+          setErrorMessage(
+            'Nenhum rosto detectado na imagem. Use uma foto com o rosto claramente visivel, bem iluminado e de frente.'
+          )
+        } else if (data.error?.code === 'UNAUTHORIZED') {
+          setErrorMessage(
+            'Voce precisa estar logado para usar a busca facial. Faca login e tente novamente.'
+          )
+        } else if (data.error?.code === 'RATE_LIMIT_EXCEEDED') {
+          setErrorMessage(
+            'Muitas tentativas. Aguarde um minuto e tente novamente.'
+          )
+        } else {
+          setErrorMessage(msg)
+        }
+
+        setPageState('error')
+        return
+      }
+
+      setResults(data.data as FaceMatchResponse)
+      setPageState('done')
+      setStatusMessage('')
+    } catch (err) {
+      console.error('Face search error:', err)
+      setErrorMessage(
+        'Ocorreu um erro durante a busca. Por favor, tente novamente.'
+      )
+      setPageState('error')
+    }
+  }, [])
 
   // ---- Handle file selection ---------------------------------
   const handleFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]
       if (!file) return
-
-      // Reset state
-      setResults(null)
-      setErrorMessage(null)
-
-      // Validate type
-      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-        setErrorMessage('Formato nao suportado. Use JPG, PNG ou WEBP.')
-        return
-      }
-
-      // Validate size (10MB max)
-      if (file.size > 10 * 1024 * 1024) {
-        setErrorMessage('Arquivo muito grande. Maximo 10MB.')
-        return
-      }
-
-      // Show preview
-      const objectUrl = URL.createObjectURL(file)
-      setPreview(objectUrl)
-
-      // Convert to base64 and send to server
-      setPageState('uploading')
-      setStatusMessage('Preparando imagem...')
-
-      try {
-        const base64 = await fileToBase64(file)
-
-        setPageState('searching')
-        setStatusMessage('Analisando rosto e buscando correspondencias...')
-
-        const response = await fetch('/api/v1/face/match', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            image_base64: base64,
-            threshold: 0.55,
-            max_results: 10,
-          }),
-        })
-
-        const data = await response.json()
-
-        if (!data.success) {
-          const msg = data.error?.message ?? 'Erro ao buscar correspondencias.'
-
-          // Special handling for no face detected
-          if (
-            data.error?.code === 'VALIDATION_ERROR' &&
-            msg.toLowerCase().includes('no face')
-          ) {
-            setErrorMessage(
-              'Nenhum rosto detectado na imagem. Use uma foto com o rosto claramente visivel, bem iluminado e de frente.'
-            )
-          } else if (data.error?.code === 'UNAUTHORIZED') {
-            setErrorMessage(
-              'Voce precisa estar logado para usar a busca facial. Faca login e tente novamente.'
-            )
-          } else if (data.error?.code === 'RATE_LIMIT_EXCEEDED') {
-            setErrorMessage(
-              'Muitas tentativas. Aguarde um minuto e tente novamente.'
-            )
-          } else {
-            setErrorMessage(msg)
-          }
-
-          setPageState('error')
-          return
-        }
-
-        setResults(data.data as FaceMatchResponse)
-        setPageState('done')
-        setStatusMessage('')
-      } catch (err) {
-        console.error('Face search error:', err)
-        setErrorMessage(
-          'Ocorreu um erro durante a busca. Por favor, tente novamente.'
-        )
-        setPageState('error')
-      }
-
+      await processImage(file)
       // Reset file input so same file can be reselected
       e.target.value = ''
     },
-    []
+    [processImage]
+  )
+
+  // ---- Drag and Drop handlers --------------------------------
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(false)
+  }, [])
+
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setIsDragOver(false)
+
+      const file = e.dataTransfer.files?.[0]
+      if (file) {
+        await processImage(file)
+      }
+    },
+    [processImage]
   )
 
   const handleReset = useCallback(() => {
@@ -251,7 +292,12 @@ export default function FaceSearchPage() {
 
           {/* Upload zone or preview */}
           {!preview ? (
-            <div>
+            <div
+              ref={dropZoneRef}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -259,16 +305,20 @@ export default function FaceSearchPage() {
                 className="w-full transition-all"
                 style={{
                   padding: '2.5rem 1.5rem',
-                  border: '2px dashed var(--color-border)',
+                  border: `2px dashed ${isDragOver ? 'var(--color-coral-hope)' : 'var(--color-border)'}`,
                   borderRadius: 'var(--radius-lg)',
-                  backgroundColor: 'var(--color-bg-secondary)',
+                  backgroundColor: isDragOver
+                    ? 'var(--color-coral-hope-light)'
+                    : 'var(--color-bg-secondary)',
                   cursor: isProcessing ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   gap: '0.75rem',
+                  transform: isDragOver ? 'scale(1.01)' : 'scale(1)',
+                  transition: 'all 0.2s ease',
                 }}
-                aria-label="Clique para enviar uma foto"
+                aria-label="Clique ou arraste uma foto para busca facial"
               >
                 {/* Camera icon */}
                 <div
@@ -276,10 +326,13 @@ export default function FaceSearchPage() {
                     width: '64px',
                     height: '64px',
                     borderRadius: '50%',
-                    backgroundColor: 'var(--color-deep-indigo)',
+                    backgroundColor: isDragOver
+                      ? 'var(--color-coral-hope)'
+                      : 'var(--color-deep-indigo)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
+                    transition: 'background-color 0.2s ease',
                   }}
                 >
                   <svg
@@ -303,10 +356,14 @@ export default function FaceSearchPage() {
                     className="text-base font-semibold"
                     style={{
                       fontFamily: 'var(--font-heading)',
-                      color: 'var(--color-deep-indigo)',
+                      color: isDragOver
+                        ? 'var(--color-coral-hope-dark)'
+                        : 'var(--color-deep-indigo)',
                     }}
                   >
-                    Clique para selecionar uma foto
+                    {isDragOver
+                      ? 'Solte a foto aqui'
+                      : 'Clique ou arraste uma foto'}
                   </p>
                   <p
                     className="text-sm mt-1"
@@ -504,7 +561,7 @@ export default function FaceSearchPage() {
           <strong style={{ color: 'var(--color-deep-indigo)' }}>
             Aviso de privacidade:
           </strong>{' '}
-          O reconhecimento facial e processado em servidores seguros usando ArcFace (512-dim).
+          O reconhecimento facial e processado em servidores seguros.
           A foto enviada e analisada e imediatamente descartada — nenhuma imagem biometrica
           do cidadao e armazenada. Todos os resultados passam por revisao humana
           antes de qualquer acao.{' '}

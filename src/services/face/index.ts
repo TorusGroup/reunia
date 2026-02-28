@@ -43,3 +43,12 @@ export {
   HITL_QUEUE_NAME,
 } from './validation-queue'
 export type { EnqueueInput, QueueStatus, ValidateMatchInput, ValidationAction } from './validation-queue'
+
+export {
+  jsDetectFace,
+  jsGenerateEmbedding,
+  jsBatchEmbed,
+  cosineSimilarity,
+  isPythonServiceAvailable,
+} from './js-face-engine'
+export type { JsFaceDetectResult, JsFaceEmbedResult } from './js-face-engine'

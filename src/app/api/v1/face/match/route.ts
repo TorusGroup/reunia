@@ -174,6 +174,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         })),
         hitl_queued: pipelineResult.enqueuedMatchIds.length,
         processing_ms: pipelineResult.processingMs,
+        engine: pipelineResult.engine ?? 'unknown',
         // Reminder visible in all match results
         notice:
           'All matches require human review before family notification. CVV 188 for crisis support.',

@@ -13,6 +13,7 @@ import { runIngestion } from '@/services/ingestion/pipeline'
 import { fbiAdapter } from '@/services/ingestion/fbi-adapter'
 import { interpolAdapter } from '@/services/ingestion/interpol-adapter'
 import { ncmecPublicAdapter } from '@/services/ingestion/ncmec-public-adapter'
+import { amberAdapter } from '@/services/ingestion/amber-adapter'
 import type { ISourceAdapter } from '@/services/ingestion/base-adapter'
 
 // Extend Railway's default 30s timeout — ingestion can take a few minutes
@@ -23,8 +24,8 @@ export const maxDuration = 300
 // Request schema
 // ---------------------------------------------------------------
 const triggerSchema = z.object({
-  source: z.enum(['fbi', 'interpol', 'ncmec', 'all']),
-  maxPages: z.number().int().min(1).max(50).optional().default(1),
+  source: z.enum(['fbi', 'interpol', 'ncmec', 'amber', 'all']),
+  maxPages: z.number().int().min(1).max(200).optional().default(1),
   // purge: delete all cases from this source before importing (useful for re-import)
   purge: z.boolean().optional().default(false),
   // S-03: purge confirmation gate — must match "DELETE-ALL-{source}" to proceed
@@ -38,6 +39,7 @@ const ADAPTERS: Record<string, ISourceAdapter> = {
   fbi: fbiAdapter,
   interpol: interpolAdapter,
   ncmec: ncmecPublicAdapter,
+  amber: amberAdapter,
 }
 
 // ---------------------------------------------------------------
@@ -237,6 +239,7 @@ export async function GET(): Promise<NextResponse> {
         'FBI: 1 page = 50 records, ~2s. Filters missing persons client-side.',
         'Interpol: blocked by cloud IP (403), returns 0 gracefully.',
         'NCMEC: public endpoint, no auth, 1 page = 25 records, ~5s.',
+        'AMBER: RSS feed from amberalert.gov. Real-time alerts, low volume.',
         'Use maxPages conservatively to avoid Railway 60s timeout (Hobby) or 300s (Pro).',
       ],
     },

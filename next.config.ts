@@ -41,7 +41,7 @@ const nextConfig: NextConfig = {
   },
 
   // --- Server external packages (Node.js only, not bundled by webpack) ---
-  serverExternalPackages: ['pino', 'pino-pretty', '@prisma/client'],
+  serverExternalPackages: ['pino', 'pino-pretty', '@prisma/client', 'ioredis', 'bullmq'],
 
   // --- Logging ---
   logging: {

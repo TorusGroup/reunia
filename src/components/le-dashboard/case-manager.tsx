@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { clsx } from 'clsx'
 
 // =============================================================
@@ -207,12 +208,23 @@ export function CaseManager({ cases, onStatusChange, onAssign }: CaseManagerProp
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => onAssign?.(c.id)}
+                      <Link
+                        href={`/case/${c.id}`}
                         className="text-xs px-2 py-1 rounded-md border transition-colors"
                         style={{
                           borderColor: 'var(--color-deep-indigo)',
                           color: 'var(--color-deep-indigo)',
+                          backgroundColor: 'transparent',
+                        }}
+                      >
+                        Ver
+                      </Link>
+                      <button
+                        onClick={() => onAssign?.(c.id)}
+                        className="text-xs px-2 py-1 rounded-md border transition-colors"
+                        style={{
+                          borderColor: 'var(--color-data-blue)',
+                          color: 'var(--color-data-blue)',
                           backgroundColor: 'transparent',
                         }}
                       >

@@ -39,6 +39,7 @@ export function AlertSubscription() {
   const [form, setForm] = useState<FormState>(INITIAL)
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   function update(changed: Partial<FormState>) {
     setForm((prev) => ({ ...prev, ...changed }))
@@ -47,10 +48,37 @@ export function AlertSubscription() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSubmitting(true)
+    setError(null)
     try {
-      // Sprint 6: replace with real POST /api/v1/alert-subscriptions
-      await new Promise<void>((res) => setTimeout(res, 1200))
+      const contactIdentifier =
+        form.channel === 'whatsapp' ? form.whatsapp :
+        form.channel === 'email' ? form.email :
+        form.sms
+
+      const res = await fetch('/api/v1/alerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel: form.channel,
+          contactIdentifier,
+          radiusKm: form.radiusKm,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!data.success) {
+        if (res.status === 429) {
+          setError('Muitas tentativas. Aguarde alguns minutos.')
+        } else {
+          setError(data.error?.message ?? 'Erro ao cadastrar. Tente novamente.')
+        }
+        return
+      }
+
       setSuccess(true)
+    } catch {
+      setError('Falha na conexão. Verifique sua internet e tente novamente.')
     } finally {
       setSubmitting(false)
     }
@@ -285,6 +313,17 @@ export function AlertSubscription() {
           <span className="text-red-500 ml-1" aria-label="obrigatório">*</span>
         </span>
       </label>
+
+      {/* Error message */}
+      {error && (
+        <div
+          className="p-3 rounded-lg text-sm"
+          style={{ backgroundColor: 'rgba(232, 99, 74, 0.08)', color: 'var(--color-coral-hope)' }}
+          role="alert"
+        >
+          {error}
+        </div>
+      )}
 
       <Button
         type="submit"

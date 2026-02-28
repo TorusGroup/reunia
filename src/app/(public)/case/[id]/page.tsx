@@ -6,14 +6,17 @@ import { Footer } from '@/components/layout/footer'
 import { CaseGallery } from '@/components/cases/case-gallery'
 import { CaseTimeline } from '@/components/cases/case-timeline'
 import { ShareButtons } from '@/components/cases/share-buttons'
+import { CaseSightings } from '@/components/cases/case-sightings'
+import { CaseMatches } from '@/components/cases/case-matches'
 import type { CaseDetail } from '@/types/cases'
 import type { TimelineEvent } from '@/components/cases/case-timeline'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 
 // =============================================================
-// Case Detail Page — Public Route Group (Sprint 4, E5-S03)
+// Case Detail Page — Public Route Group (Sprint 4, E5-S03 + Sprint 7 LE-03)
 // Server Component — fetches real data from DB, falls back to notFound
+// Sprint 7: Added sightings history, face matches, source data
 // =============================================================
 
 interface CaseDetailPageProps {
@@ -135,7 +138,79 @@ const SOURCE_LABELS: Record<string, string> = {
   disque100: 'Disque 100 — Direitos Humanos',
 }
 
-// Mock timeline for MVP
+// Fetch sightings for this case
+async function getCaseSightings(caseId: string) {
+  try {
+    const sightings = await db.sighting.findMany({
+      where: { caseId },
+      select: {
+        id: true,
+        description: true,
+        seenAt: true,
+        locationText: true,
+        latitude: true,
+        longitude: true,
+        photoUrl: true,
+        status: true,
+        isAnonymous: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    })
+    return sightings.map((s) => ({
+      id: s.id,
+      description: s.description,
+      seenAt: s.seenAt?.toISOString() ?? null,
+      locationText: s.locationText,
+      latitude: s.latitude,
+      longitude: s.longitude,
+      photoUrl: s.photoUrl,
+      status: s.status,
+      isAnonymous: s.isAnonymous,
+      createdAt: s.createdAt.toISOString(),
+    }))
+  } catch (err) {
+    logger.error({ err, caseId }, 'getCaseSightings: DB error')
+    return []
+  }
+}
+
+// Fetch face matches for this case
+async function getCaseMatches(caseId: string) {
+  try {
+    const matches = await db.match.findMany({
+      where: { matchedCaseId: caseId },
+      select: {
+        id: true,
+        similarityScore: true,
+        confidenceTier: true,
+        reviewStatus: true,
+        queryImageUrl: true,
+        querySource: true,
+        requestedAt: true,
+        reviewedAt: true,
+      },
+      orderBy: { requestedAt: 'desc' },
+      take: 10,
+    })
+    return matches.map((m) => ({
+      id: m.id,
+      similarityScore: m.similarityScore,
+      confidenceTier: m.confidenceTier,
+      reviewStatus: m.reviewStatus,
+      queryImageUrl: m.queryImageUrl,
+      querySource: m.querySource,
+      requestedAt: m.requestedAt.toISOString(),
+      reviewedAt: m.reviewedAt?.toISOString() ?? null,
+    }))
+  } catch (err) {
+    logger.error({ err, caseId }, 'getCaseMatches: DB error')
+    return []
+  }
+}
+
+// Build timeline from case data + sightings
 function buildTimeline(caseData: CaseDetail): TimelineEvent[] {
   const events: TimelineEvent[] = [
     {
@@ -168,6 +243,12 @@ export default async function CaseDetailPage({ params }: CaseDetailPageProps) {
 
   const caseData = await getCaseDetail(id)
   if (!caseData) notFound()
+
+  // Fetch related data in parallel
+  const [sightings, matches] = await Promise.all([
+    getCaseSightings(id),
+    getCaseMatches(id),
+  ])
 
   const person = caseData.persons[0]
   const personName = person
@@ -490,6 +571,38 @@ export default async function CaseDetailPage({ params }: CaseDetailPageProps) {
               </div>
             </div>
           </div>
+
+          {/* Sightings — Sprint 7 LE-03 */}
+          {sightings.length > 0 && (
+            <div
+              className="mt-8 p-6 rounded-xl"
+              style={{ backgroundColor: 'var(--color-bg-primary)', border: '1px solid var(--color-border)' }}
+            >
+              <h2
+                className="text-base font-bold mb-4"
+                style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-deep-indigo)' }}
+              >
+                Avistamentos Reportados ({sightings.length})
+              </h2>
+              <CaseSightings sightings={sightings} />
+            </div>
+          )}
+
+          {/* Face Matches — Sprint 7 LE-03 */}
+          {matches.length > 0 && (
+            <div
+              className="mt-8 p-6 rounded-xl"
+              style={{ backgroundColor: 'var(--color-bg-primary)', border: '1px solid var(--color-border)' }}
+            >
+              <h2
+                className="text-base font-bold mb-4"
+                style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-deep-indigo)' }}
+              >
+                Correspondencias Faciais ({matches.length})
+              </h2>
+              <CaseMatches matches={matches} />
+            </div>
+          )}
 
           {/* Source attribution */}
           <div

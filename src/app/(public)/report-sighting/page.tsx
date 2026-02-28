@@ -17,7 +17,13 @@ export const metadata: Metadata = {
   },
 }
 
-export default function ReportSightingPage() {
+interface ReportSightingPageProps {
+  searchParams: Promise<{ caseId?: string }>
+}
+
+export default async function ReportSightingPage({ searchParams }: ReportSightingPageProps) {
+  const { caseId } = await searchParams
+
   return (
     <>
       <Header />
@@ -71,7 +77,7 @@ export default function ReportSightingPage() {
               boxShadow: 'var(--shadow-elevated)',
             }}
           >
-            <SightingForm />
+            <SightingForm defaultCaseId={caseId} />
           </div>
 
           {/* Help numbers */}

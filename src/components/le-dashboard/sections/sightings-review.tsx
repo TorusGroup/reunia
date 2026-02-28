@@ -1,71 +1,105 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { SightingCard } from '@/components/le-dashboard/sighting-card'
 import type { SightingData } from '@/components/le-dashboard/sighting-card'
 
 // =============================================================
 // Sightings Review Section — Sprint 6, E7-S04
-// Mock data — API integration Sprint 7+
+// Wired to real API endpoints (Sprint 6 AL-03)
 // =============================================================
 
-const MOCK_SIGHTINGS: SightingData[] = [
-  {
-    id: 's1',
-    caseId: '1',
-    caseNumber: 'BR-2026-001',
-    description: 'Vi uma criança que se parece com a foto do alerta perto da estação de metrô Consolação, estava acompanhada de um adulto desconhecido.',
-    seenAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    locationText: 'Metrô Consolação, São Paulo, SP',
-    latitude: -23.5569,
-    longitude: -46.6628,
-    photoUrl: null,
-    status: 'pending',
-    isAnonymous: true,
-    reporterName: null,
-    createdAt: new Date(Date.now() - 1.5 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 's2',
-    caseId: null,
-    caseNumber: null,
-    description: 'Criança sozinha e chorando na rua, aparenta ter entre 7 e 10 anos, cabelo escuro, blusa amarela. Estava próxima ao parque.',
-    seenAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-    locationText: 'Parque Trianon, Av. Paulista, São Paulo',
-    latitude: -23.5613,
-    longitude: -46.6558,
-    photoUrl: 'https://placehold.co/80x80/E8634A/white?text=Foto',
-    status: 'reviewing',
-    isAnonymous: false,
-    reporterName: 'Carlos Mendes',
-    createdAt: new Date(Date.now() - 4.5 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 's3',
-    caseId: '2',
-    caseNumber: 'BR-2026-018',
-    description: 'Avistei a criança na praia de Copacabana, na altura do posto 5. Estava correndo e parecia assustada.',
-    seenAt: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
-    locationText: 'Praia de Copacabana, Posto 5, Rio de Janeiro',
-    latitude: -22.9714,
-    longitude: -43.1829,
-    photoUrl: null,
-    status: 'confirmed',
-    isAnonymous: false,
-    reporterName: 'Maria das Graças',
-    createdAt: new Date(Date.now() - 7.5 * 60 * 60 * 1000).toISOString(),
-  },
-]
-
 export function SightingsReview() {
-  const [sightings, setSightings] = useState<SightingData[]>(MOCK_SIGHTINGS)
+  const [sightings, setSightings] = useState<SightingData[]>([])
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [total, setTotal] = useState(0)
 
-  const handleReview = (id: string, status: 'confirmed' | 'rejected') => {
-    setSightings((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, status } : s))
-    )
-    console.log('Review sighting', id, status)
+  const fetchSightings = useCallback(async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams({ limit: '50' })
+      if (statusFilter !== 'all') {
+        params.set('status', statusFilter)
+      }
+
+      const res = await fetch(`/api/v1/sightings?${params.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${getToken()}`,
+        },
+      })
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          setError('Sessão expirada. Faça login novamente.')
+          return
+        }
+        if (res.status === 403) {
+          setError('Acesso negado. Permissão insuficiente.')
+          return
+        }
+        throw new Error(`HTTP ${res.status}`)
+      }
+
+      const data = await res.json()
+      if (data.success) {
+        const mapped: SightingData[] = data.data.sightings.map((s: Record<string, unknown>) => ({
+          id: s.id,
+          caseId: s.caseId ?? null,
+          caseNumber: (s.case as Record<string, unknown> | null)?.caseNumber ?? null,
+          description: s.description,
+          seenAt: s.seenAt ?? null,
+          locationText: s.locationText ?? null,
+          latitude: s.latitude ?? null,
+          longitude: s.longitude ?? null,
+          photoUrl: s.photoUrl ?? null,
+          status: s.status as SightingData['status'],
+          isAnonymous: s.isAnonymous ?? false,
+          reporterName: null,
+          createdAt: s.createdAt as string,
+        }))
+        setSightings(mapped)
+        setTotal(data.data.total ?? mapped.length)
+      }
+    } catch (err) {
+      console.error('Failed to fetch sightings:', err)
+      setError('Erro ao carregar avistamentos. Tente novamente.')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [statusFilter])
+
+  useEffect(() => {
+    fetchSightings()
+  }, [fetchSightings])
+
+  const handleReview = async (id: string, status: 'confirmed' | 'rejected', reason?: string) => {
+    try {
+      const res = await fetch(`/api/v1/sightings/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({
+          status,
+          reviewNotes: reason ?? `Reviewed as ${status}`,
+        }),
+      })
+
+      if (res.ok) {
+        // Optimistic update
+        setSightings((prev) =>
+          prev.map((s) => (s.id === id ? { ...s, status } : s))
+        )
+      } else {
+        console.error('Failed to review sighting:', res.status)
+      }
+    } catch (err) {
+      console.error('Review error:', err)
+    }
   }
 
   const filtered = statusFilter === 'all'
@@ -83,10 +117,27 @@ export function SightingsReview() {
             Avistamentos
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            {pendingCount} aguardando revisão &middot; {sightings.length} total
+            {pendingCount} aguardando revisão &middot; {total} total
           </p>
         </div>
+        <button
+          onClick={fetchSightings}
+          className="px-3 py-1.5 text-xs font-medium rounded-lg border transition-all"
+          style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
+        >
+          Atualizar
+        </button>
       </div>
+
+      {/* Error */}
+      {error && (
+        <div
+          className="p-3 rounded-lg text-sm"
+          style={{ backgroundColor: 'rgba(232, 99, 74, 0.08)', color: 'var(--color-coral-hope)' }}
+        >
+          {error}
+        </div>
+      )}
 
       {/* Filter */}
       <div className="flex gap-2 flex-wrap">
@@ -106,8 +157,18 @@ export function SightingsReview() {
         ))}
       </div>
 
+      {/* Loading */}
+      {isLoading && (
+        <div className="flex justify-center py-12">
+          <div
+            className="w-8 h-8 border-3 border-t-transparent rounded-full animate-spin"
+            style={{ borderColor: 'var(--color-deep-indigo)', borderTopColor: 'transparent' }}
+          />
+        </div>
+      )}
+
       {/* Cards */}
-      {filtered.length === 0 ? (
+      {!isLoading && filtered.length === 0 ? (
         <div
           className="rounded-xl border p-12 text-center"
           style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-primary)' }}
@@ -128,4 +189,15 @@ export function SightingsReview() {
       )}
     </div>
   )
+}
+
+// Helper: get JWT token from cookie or localStorage
+function getToken(): string {
+  if (typeof window === 'undefined') return ''
+  // Try cookie first (set by auth system)
+  const cookies = document.cookie.split(';')
+  const tokenCookie = cookies.find((c) => c.trim().startsWith('access_token='))
+  if (tokenCookie) return tokenCookie.split('=')[1]?.trim() ?? ''
+  // Fallback to localStorage
+  return localStorage.getItem('access_token') ?? ''
 }

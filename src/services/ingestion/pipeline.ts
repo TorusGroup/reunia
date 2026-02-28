@@ -10,6 +10,7 @@ import type { ISourceAdapter, NormalizedCase, IngestionResult, FetchOptions } fr
 import { findExactMatch, findFuzzyMatch } from '@/services/ingestion/deduplicator'
 import { scoreRecord } from '@/services/ingestion/quality-scorer'
 import { mapToCaseFields, mapToPersonFields } from '@/services/ingestion/normalizer'
+import { triggerAlert } from '@/services/alerts/alert-engine'
 import type { CaseSource } from '@prisma/client'
 
 // ---------------------------------------------------------------
@@ -256,6 +257,8 @@ async function createNewCase(normalized: NormalizedCase, qualityScore: number): 
   // Generate case number: SOURCE-EXTERNALID (truncated)
   const caseNumber = `${String(normalized.source).toUpperCase()}-${normalized.externalId.slice(0, 30)}`
 
+  let newCaseId: string | null = null
+
   await db.$transaction(async (tx) => {
     // Create case
     const newCase = await tx.case.create({
@@ -274,6 +277,8 @@ async function createNewCase(normalized: NormalizedCase, qualityScore: number): 
         },
       },
     })
+
+    newCaseId = newCase.id
 
     // Create person
     const newPerson = await tx.person.create({
@@ -300,6 +305,16 @@ async function createNewCase(normalized: NormalizedCase, qualityScore: number): 
       }
     }
   })
+
+  // After successful transaction, trigger NEW_CASE alert (fire-and-forget)
+  if (newCaseId) {
+    triggerAlert({ type: 'NEW_CASE', caseId: newCaseId }).catch((err: unknown) => {
+      logger.error(
+        { err, caseId: newCaseId, source: normalized.source },
+        'Pipeline: failed to trigger NEW_CASE alert (non-blocking)'
+      )
+    })
+  }
 }
 
 // ---------------------------------------------------------------

@@ -175,26 +175,13 @@ export class AmberAdapter extends BaseAdapter {
   }
 
   private async fetchFeed(feedUrl: string): Promise<RssItem[]> {
-    let xmlContent: string
-
-    try {
-      // Try to use rss-parser if available
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const Parser = require('rss-parser') as new () => {
-        parseURL(url: string): Promise<{ items: RssItem[] }>
-      }
-      const parser = new Parser()
-      const feed = await parser.parseURL(feedUrl)
-      return feed.items
-    } catch {
-      // Fall back to manual XML fetch + parse
-      const response = await this.fetchWithRetry(feedUrl, {
-        headers: { Accept: 'application/rss+xml, application/xml, text/xml' },
-      })
-      xmlContent = await response.text()
-      const parsed = parseRssXml(xmlContent)
-      return parsed.items
-    }
+    // Use built-in XML parser (no external deps)
+    const response = await this.fetchWithRetry(feedUrl, {
+      headers: { Accept: 'application/rss+xml, application/xml, text/xml' },
+    })
+    const xmlContent = await response.text()
+    const parsed = parseRssXml(xmlContent)
+    return parsed.items
   }
 
   normalize(raw: RawRecord): NormalizedCase {

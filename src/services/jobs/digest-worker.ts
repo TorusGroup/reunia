@@ -8,12 +8,28 @@ import { sendEmail } from '@/services/alerts/channels/email-channel'
 // Digest Worker — Daily/weekly alert digest compilation (Sprint 6)
 // =============================================================
 
-export const digestQueue = new Queue('alert-digest', {
-  connection: redisQueue,
-  defaultJobOptions: {
-    attempts: 2,
-    removeOnComplete: { count: 50 },
-    removeOnFail: { count: 100 },
+// Lazy Queue creation to avoid eager Redis connections during build
+let _digestQueue: Queue | null = null
+export function getDigestQueue(): Queue {
+  if (!_digestQueue) {
+    _digestQueue = new Queue('alert-digest', {
+      connection: redisQueue,
+      defaultJobOptions: {
+        attempts: 2,
+        removeOnComplete: { count: 50 },
+        removeOnFail: { count: 100 },
+      },
+    })
+  }
+  return _digestQueue
+}
+// Backward-compatible export (lazily initialized)
+// During build phase, all property accesses return undefined to avoid Redis connection.
+const IS_BUILD_DW = process.env.NEXT_PHASE === 'phase-production-build'
+export const digestQueue: Queue = new Proxy({} as Queue, {
+  get(_target, prop) {
+    if (IS_BUILD_DW) return undefined
+    return (getDigestQueue() as unknown as Record<string | symbol, unknown>)[prop]
   },
 })
 

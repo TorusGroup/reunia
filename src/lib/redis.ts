@@ -5,7 +5,32 @@ import { logger } from '@/lib/logger'
 
 // =============================================================
 // Redis Client & BullMQ Job Queues (E1-S03)
+// ALL connections are LAZY — nothing connects at import time.
+// This prevents build hangs during `next build` page collection.
 // =============================================================
+
+// ---------------------------------------------------------------
+// Build-phase detection
+// During `next build`, webpack/Next.js introspects module exports
+// which triggers Proxy get traps. We must guard against this.
+// ---------------------------------------------------------------
+
+const IS_BUILD = process.env.NEXT_PHASE === 'phase-production-build'
+
+// Properties that webpack/Next.js/Node probe during module introspection
+const INTROSPECTION_PROPS = new Set<string | symbol>([
+  'then',
+  'toJSON',
+  'toString',
+  'valueOf',
+  '$$typeof',
+  '__esModule',
+  Symbol.toPrimitive,
+  Symbol.toStringTag,
+  Symbol.iterator,
+  Symbol.asyncIterator,
+  Symbol.hasInstance,
+])
 
 // ---------------------------------------------------------------
 // Redis connection configuration
@@ -23,10 +48,10 @@ const REDIS_OPTIONS: RedisOptions = {
   },
   enableReadyCheck: true,
   maxRetriesPerRequest: 3,
-  lazyConnect: true, // Don't connect until needed
+  lazyConnect: true,
 }
 
-// Singleton Redis instance (shared cache/session store)
+// Singleton Redis instances (lazy — created on first access)
 const globalForRedis = globalThis as unknown as {
   redis: Redis | undefined
   redisQueue: Redis | undefined
@@ -44,19 +69,43 @@ function createRedisClient(url: string, name: string): Redis {
   return client
 }
 
-export const redis: Redis =
-  globalForRedis.redis ??
-  createRedisClient(env.REDIS_URL, 'main')
+// ---------------------------------------------------------------
+// Public getters — call these to get the Redis instance
+// ---------------------------------------------------------------
 
-// Separate connection for BullMQ queues (recommended by BullMQ)
-export const redisQueue: Redis =
-  globalForRedis.redisQueue ??
-  createRedisClient(env.REDIS_QUEUE_URL ?? env.REDIS_URL, 'queue')
-
-if (env.NODE_ENV !== 'production') {
-  globalForRedis.redis = redis
-  globalForRedis.redisQueue = redisQueue
+export function getRedis(): Redis {
+  if (!globalForRedis.redis) {
+    globalForRedis.redis = createRedisClient(env.REDIS_URL, 'main')
+  }
+  return globalForRedis.redis
 }
+
+export function getRedisQueue(): Redis {
+  if (!globalForRedis.redisQueue) {
+    globalForRedis.redisQueue = createRedisClient(env.REDIS_QUEUE_URL ?? env.REDIS_URL, 'queue')
+  }
+  return globalForRedis.redisQueue
+}
+
+// Backward compatibility: named exports that lazily resolve
+// IMPORTANT: these must only be used in async contexts (redis.get(), redis.setex(), etc.)
+// During build phase, all property accesses return undefined to avoid connection attempts.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const redis = new Proxy({} as Redis, {
+  get: (_t, p) => {
+    if (IS_BUILD || INTROSPECTION_PROPS.has(p)) return undefined
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (getRedis() as any)[p]
+  },
+})
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const redisQueue = new Proxy({} as Redis, {
+  get: (_t, p) => {
+    if (IS_BUILD || INTROSPECTION_PROPS.has(p)) return undefined
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (getRedisQueue() as any)[p]
+  },
+})
 
 // ---------------------------------------------------------------
 // Cache utilities
@@ -67,7 +116,7 @@ const DEFAULT_TTL = 300 // 5 minutes
 export const cache = {
   async get<T>(key: string): Promise<T | null> {
     try {
-      const value = await redis.get(key)
+      const value = await getRedis().get(key)
       if (!value) return null
       return JSON.parse(value) as T
     } catch (err) {
@@ -78,7 +127,7 @@ export const cache = {
 
   async set<T>(key: string, value: T, ttlSeconds: number = DEFAULT_TTL): Promise<void> {
     try {
-      await redis.setex(key, ttlSeconds, JSON.stringify(value))
+      await getRedis().setex(key, ttlSeconds, JSON.stringify(value))
     } catch (err) {
       logger.error({ err, key }, 'Cache: set error')
     }
@@ -86,7 +135,7 @@ export const cache = {
 
   async del(key: string): Promise<void> {
     try {
-      await redis.del(key)
+      await getRedis().del(key)
     } catch (err) {
       logger.error({ err, key }, 'Cache: del error')
     }
@@ -94,9 +143,9 @@ export const cache = {
 
   async delPattern(pattern: string): Promise<void> {
     try {
-      const keys = await redis.keys(pattern)
+      const keys = await getRedis().keys(pattern)
       if (keys.length > 0) {
-        await redis.del(...keys)
+        await getRedis().del(...keys)
       }
     } catch (err) {
       logger.error({ err, pattern }, 'Cache: delPattern error')
@@ -111,26 +160,22 @@ export const cache = {
 const SESSION_PREFIX = 'refresh:'
 
 export const sessionStore = {
-  // Store refresh token: key = refresh:{userId}:{tokenId}
   async set(userId: string, tokenId: string, ttlSeconds: number): Promise<void> {
     const key = `${SESSION_PREFIX}${userId}:${tokenId}`
-    await redis.setex(key, ttlSeconds, '1')
+    await getRedis().setex(key, ttlSeconds, '1')
   },
 
-  // Validate refresh token exists
   async exists(userId: string, tokenId: string): Promise<boolean> {
     const key = `${SESSION_PREFIX}${userId}:${tokenId}`
-    const exists = await redis.exists(key)
-    return exists === 1
+    const result = await getRedis().exists(key)
+    return result === 1
   },
 
-  // Invalidate single refresh token (logout)
   async invalidate(userId: string, tokenId: string): Promise<void> {
     const key = `${SESSION_PREFIX}${userId}:${tokenId}`
-    await redis.del(key)
+    await getRedis().del(key)
   },
 
-  // Invalidate all refresh tokens for a user (logout all devices)
   async invalidateAll(userId: string): Promise<void> {
     await cache.delPattern(`${SESSION_PREFIX}${userId}:*`)
   },
@@ -148,7 +193,6 @@ export async function rateLimitCheck(
   const now = Date.now()
   const windowStart = now - windowSeconds * 1000
 
-  // Lua script for atomic sliding window rate limit
   const luaScript = `
     local key = KEYS[1]
     local window_start = tonumber(ARGV[1])
@@ -156,14 +200,10 @@ export async function rateLimitCheck(
     local max_requests = tonumber(ARGV[3])
     local window_seconds = tonumber(ARGV[4])
 
-    -- Remove old entries outside the window
     redis.call('ZREMRANGEBYSCORE', key, '-inf', window_start)
-
-    -- Count current requests
     local count = redis.call('ZCARD', key)
 
     if count < max_requests then
-      -- Add current request (use now + random suffix to prevent millisecond collisions — S-04)
       redis.call('ZADD', key, now, now .. ':' .. tostring(math.random()))
       redis.call('EXPIRE', key, window_seconds)
       return {1, max_requests - count - 1}
@@ -172,7 +212,7 @@ export async function rateLimitCheck(
     end
   `
 
-  const result = (await redis.eval(
+  const result = (await getRedis().eval(
     luaScript,
     1,
     key,
@@ -190,39 +230,69 @@ export async function rateLimitCheck(
 }
 
 // ---------------------------------------------------------------
-// BullMQ Queue definitions (E1-S03)
+// BullMQ Queue definitions — LAZY (created on first access)
 // ---------------------------------------------------------------
 
-const QUEUE_OPTIONS: QueueOptions = {
-  connection: redisQueue,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 1000,
-    },
-    removeOnComplete: { count: 100 },
-    removeOnFail: { count: 500 },
-  },
+type QueueMap = {
+  ingestionFbi: Queue
+  ingestionInterpol: Queue
+  ingestionNcmec: Queue
+  ingestionAmber: Queue
+  ingestionOpensanctions: Queue
+  ingestionCnpd: Queue
+  ingestionDisque100: Queue
+  ingestionGdelt: Queue
+  embeddingGeneration: Queue
+  alertDistribution: Queue
+  faceMatch: Queue
+  hitlValidation: Queue
 }
 
-export const queues = {
-  // Data ingestion queues (one per external source)
-  ingestionFbi: new Queue('ingestion-fbi', QUEUE_OPTIONS),
-  ingestionInterpol: new Queue('ingestion-interpol', QUEUE_OPTIONS),
-  ingestionNcmec: new Queue('ingestion-ncmec', QUEUE_OPTIONS),
-  ingestionAmber: new Queue('ingestion-amber', QUEUE_OPTIONS),
-  ingestionOpensanctions: new Queue('ingestion-opensanctions', QUEUE_OPTIONS),
-  ingestionCnpd: new Queue('ingestion-cnpd', QUEUE_OPTIONS),
-  ingestionDisque100: new Queue('ingestion-disque100', QUEUE_OPTIONS),
-  ingestionGdelt: new Queue('ingestion-gdelt', QUEUE_OPTIONS),
-  // Processing queues
-  embeddingGeneration: new Queue('embedding-generation', QUEUE_OPTIONS),
-  alertDistribution: new Queue('alert-distribution', QUEUE_OPTIONS),
-  faceMatch: new Queue('face-match', QUEUE_OPTIONS),
-  // HITL validation queue (Sprint 5) — managed by validation-queue.ts
-  hitlValidation: new Queue('hitl-validation', QUEUE_OPTIONS),
+const QUEUE_NAMES: Record<keyof QueueMap, string> = {
+  ingestionFbi: 'ingestion-fbi',
+  ingestionInterpol: 'ingestion-interpol',
+  ingestionNcmec: 'ingestion-ncmec',
+  ingestionAmber: 'ingestion-amber',
+  ingestionOpensanctions: 'ingestion-opensanctions',
+  ingestionCnpd: 'ingestion-cnpd',
+  ingestionDisque100: 'ingestion-disque100',
+  ingestionGdelt: 'ingestion-gdelt',
+  embeddingGeneration: 'embedding-generation',
+  alertDistribution: 'alert-distribution',
+  faceMatch: 'face-match',
+  hitlValidation: 'hitl-validation',
 }
+
+const queueInstances: Partial<Record<keyof QueueMap, Queue>> = {}
+
+function getQueueOptions(): QueueOptions {
+  return {
+    connection: getRedisQueue(),
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 1000 },
+      removeOnComplete: { count: 100 },
+      removeOnFail: { count: 500 },
+    },
+  }
+}
+
+function getQueue(name: keyof QueueMap): Queue {
+  if (!queueInstances[name]) {
+    queueInstances[name] = new Queue(QUEUE_NAMES[name], getQueueOptions())
+  }
+  return queueInstances[name]!
+}
+
+export const queues: QueueMap = new Proxy({} as QueueMap, {
+  get(_target, prop: string | symbol) {
+    if (IS_BUILD || INTROSPECTION_PROPS.has(prop)) return undefined
+    if (typeof prop === 'string' && prop in QUEUE_NAMES) {
+      return getQueue(prop as keyof QueueMap)
+    }
+    return undefined
+  },
+})
 
 // Health check for Redis connection
 export async function checkRedisHealth(): Promise<{
@@ -232,7 +302,7 @@ export async function checkRedisHealth(): Promise<{
 }> {
   const start = Date.now()
   try {
-    await redis.ping()
+    await getRedis().ping()
     return { status: 'healthy', latencyMs: Date.now() - start }
   } catch (err) {
     return {

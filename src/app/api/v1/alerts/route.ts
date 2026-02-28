@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { extractAuth, requireAuth } from '@/lib/api-auth'
-import { rateLimitCheck, queues } from '@/lib/redis'
+import { rateLimitCheck } from '@/lib/redis'
 import { getIpFromHeaders } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { ErrorCodes } from '@/types'

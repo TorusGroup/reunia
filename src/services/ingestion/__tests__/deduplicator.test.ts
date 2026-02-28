@@ -199,7 +199,7 @@ describe('deduplicator', () => {
       const record = buildRecord({
         firstName: 'Jo',
         lastName: '',
-        fullName: 'Jo',
+        nameNormalized: 'jo',
       })
 
       const result = await findFuzzyMatch(record)

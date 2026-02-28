@@ -21,11 +21,27 @@ export interface SubscriberTarget {
 /**
  * Find all active alert subscriptions within radiusKm of a point.
  * Falls back to all active subscriptions if no geo data is available.
+ *
+ * P-02: PostGIS guard — geo queries are wrapped in try-catch and will
+ * gracefully degrade to returning all active subscribers if PostGIS
+ * extension is not available. When POSTGIS_ENABLED=true is set,
+ * geo-filtering is attempted; otherwise, it's skipped entirely.
  */
 export async function findSubscribersInRadius(
   center: GeoPoint,
   alertType?: string
 ): Promise<SubscriberTarget[]> {
+  const postgisEnabled = process.env.POSTGIS_ENABLED === 'true'
+
+  // If PostGIS is not enabled, skip geo query and return all active subscribers
+  if (!postgisEnabled) {
+    logger.info(
+      { lat: center.lat, lng: center.lng, alertType },
+      'GeoFence: PostGIS not enabled (POSTGIS_ENABLED != true). Returning all active subscribers without geo filter.'
+    )
+    return getAllActiveSubscribers()
+  }
+
   try {
     // Raw SQL to use PostGIS ST_DWithin on the geo GEOGRAPHY column
     // The alert_subscriptions.geo column is managed via raw SQL migration
@@ -69,26 +85,32 @@ export async function findSubscribersInRadius(
 
     return subscribers
   } catch (err) {
-    logger.error({ err, center, alertType }, 'GeoFence: query failed, falling back to all active')
-
-    // Fallback: return all active subscriptions (no geo filter)
-    const fallback = await db.alertSubscription.findMany({
-      where: { isActive: true },
-      select: {
-        id: true,
-        channel: true,
-        contactIdentifier: true,
-        userId: true,
-      },
-    })
-
-    return fallback.map((s) => ({
-      id: s.id,
-      channel: s.channel,
-      contactIdentifier: s.contactIdentifier,
-      userId: s.userId,
-    }))
+    logger.error({ err, center, alertType }, 'GeoFence: PostGIS query failed, falling back to all active subscribers')
+    return getAllActiveSubscribers()
   }
+}
+
+/**
+ * Helper: return all active subscribers (no geo filter).
+ * Used as fallback when PostGIS is not available.
+ */
+async function getAllActiveSubscribers(): Promise<SubscriberTarget[]> {
+  const fallback = await db.alertSubscription.findMany({
+    where: { isActive: true },
+    select: {
+      id: true,
+      channel: true,
+      contactIdentifier: true,
+      userId: true,
+    },
+  })
+
+  return fallback.map((s) => ({
+    id: s.id,
+    channel: s.channel,
+    contactIdentifier: s.contactIdentifier,
+    userId: s.userId,
+  }))
 }
 
 /**

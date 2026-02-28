@@ -1,0 +1,41 @@
+# =============================================================
+# ReunIA — Deploy Pipeline (Q-02)
+# Triggers Railway deployment on push to main (after CI passes)
+# =============================================================
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Ensure CI passes before deploying
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Deploy to Railway
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Trigger Railway Deploy
+        run: |
+          if [ -z "${{ secrets.RAILWAY_DEPLOY_WEBHOOK }}" ]; then
+            echo "RAILWAY_DEPLOY_WEBHOOK secret not set. Skipping deploy."
+            echo "To enable auto-deploy, add the Railway deploy webhook URL as a GitHub secret."
+            exit 0
+          fi
+          curl -X POST "${{ secrets.RAILWAY_DEPLOY_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error
+          echo "Railway deployment triggered successfully."

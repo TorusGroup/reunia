@@ -253,10 +253,16 @@ export async function executeTextSearch(
   }
 
   // --- Geo filter ---
+  // P-02: PostGIS is not enabled in the current deployment.
+  // Geo queries (ST_DWithin, ST_Distance, ST_MakePoint) are guarded
+  // behind a feature flag. When PostGIS is enabled (post-MVP),
+  // set POSTGIS_ENABLED=true in env to activate geo-based search.
   let geoCondition = ''
   let distanceExpression = 'NULL::float8 AS distance_km'
 
-  if (hasGeoFilter && geoParams) {
+  const postgisEnabled = process.env.POSTGIS_ENABLED === 'true'
+
+  if (hasGeoFilter && geoParams && postgisEnabled) {
     sqlParams.push(geoParams.lng)
     sqlParams.push(geoParams.lat)
     sqlParams.push(geoParams.radiusMeters)
@@ -279,6 +285,11 @@ export async function executeTextSearch(
         ST_MakePoint(${lngParam}, ${latParam})::geography
       ) / 1000.0 AS distance_km
     `
+  } else if (hasGeoFilter && geoParams && !postgisEnabled) {
+    logger.warn(
+      { lat: geoParams.lat, lng: geoParams.lng },
+      'Geo filter requested but PostGIS is not enabled (POSTGIS_ENABLED != true). Skipping geo-based filtering.'
+    )
   }
 
   // --- Order by ---

@@ -132,74 +132,11 @@ async function getStatsFromDb(): Promise<{
 }
 
 // ---------------------------------------------------------------
-// Mock fallback cases (used only when DB has no data)
+// No mock fallback cases (P-01: Homepage must show real data only)
+// If DB is empty, homepage shows an empty state with a message.
+// Hardcoded mock data was removed to prevent aspirational/fake
+// numbers from appearing on a child safety platform.
 // ---------------------------------------------------------------
-const MOCK_CASES: CaseSummary[] = [
-  {
-    id: '550e8400-e29b-41d4-a716-446655440001',
-    caseNumber: 'REUNIA-2026-000001',
-    caseType: 'missing',
-    status: 'active',
-    urgency: 'high',
-    reportedAt: '2026-02-24T00:00:00Z',
-    lastSeenAt: '2026-02-24T14:30:00Z',
-    lastSeenLocation: 'São Paulo, SP',
-    lastSeenCountry: 'BR',
-    source: 'platform',
-    dataQuality: 85,
-    persons: [{ id: 'p1', role: 'missing_child', firstName: 'Maria', lastName: 'Santos', approximateAge: 8, gender: 'female' }],
-    createdAt: '2026-02-24T00:00:00Z',
-    updatedAt: '2026-02-24T00:00:00Z',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440002',
-    caseNumber: 'REUNIA-2026-000002',
-    caseType: 'missing',
-    status: 'active',
-    urgency: 'critical',
-    reportedAt: '2026-02-15T00:00:00Z',
-    lastSeenAt: '2026-02-15T09:00:00Z',
-    lastSeenLocation: 'Rio de Janeiro, RJ',
-    lastSeenCountry: 'BR',
-    source: 'ncmec',
-    dataQuality: 92,
-    persons: [{ id: 'p2', role: 'missing_child', firstName: 'João', lastName: 'Pereira', approximateAge: 12, gender: 'male' }],
-    createdAt: '2026-02-15T00:00:00Z',
-    updatedAt: '2026-02-15T00:00:00Z',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440003',
-    caseNumber: 'REUNIA-2026-000003',
-    caseType: 'missing',
-    status: 'active',
-    urgency: 'high',
-    reportedAt: '2026-02-25T00:00:00Z',
-    lastSeenAt: '2026-02-25T16:00:00Z',
-    lastSeenLocation: 'Campinas, SP',
-    lastSeenCountry: 'BR',
-    source: 'platform',
-    dataQuality: 78,
-    persons: [{ id: 'p3', role: 'missing_child', firstName: 'Ana', lastName: 'Lima', approximateAge: 6, gender: 'female' }],
-    createdAt: '2026-02-25T00:00:00Z',
-    updatedAt: '2026-02-25T00:00:00Z',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440004',
-    caseNumber: 'REUNIA-2026-000004',
-    caseType: 'missing',
-    status: 'active',
-    urgency: 'standard',
-    reportedAt: '2026-02-19T00:00:00Z',
-    lastSeenAt: '2026-02-19T11:00:00Z',
-    lastSeenLocation: 'Brasília, DF',
-    lastSeenCountry: 'BR',
-    source: 'fbi',
-    dataQuality: 88,
-    persons: [{ id: 'p4', role: 'missing_child', firstName: 'Pedro', lastName: 'Mendes', approximateAge: 14, gender: 'male' }],
-    createdAt: '2026-02-19T00:00:00Z',
-    updatedAt: '2026-02-19T00:00:00Z',
-  },
-]
 
 // Format number with locale separator (e.g. 50823 -> "50.823")
 function formatNumber(n: number): string {
@@ -251,23 +188,21 @@ export default async function HomePage() {
     getStatsFromDb(),
   ])
 
-  // Use DB data if available, fallback to mock cases for display
-  const recentCases = dbCases.length > 0 ? dbCases : MOCK_CASES
+  // P-01: Use real DB data only — no mock/hardcoded fallbacks
+  const recentCases = dbCases
 
-  // Stats: use DB count if available, else placeholder
+  // Stats from real database — show actual numbers, never fake ones
   const stats = [
     {
-      value: dbStats.activeCases > 0 ? formatNumber(dbStats.activeCases) : '50.823',
+      value: formatNumber(dbStats.activeCases),
       label: 'Casos ativos',
-      sublabel: 'em bases de dados internacionais',
+      sublabel: 'em bases de dados integradas',
     },
     {
-      value: dbStats.sources > 0 ? String(dbStats.sources) : '4',
-      label: 'Bancos de dados',
-      sublabel: 'FBI, NCMEC, Interpol, BR',
+      value: dbStats.sources > 0 ? String(dbStats.sources) : '—',
+      label: 'Fontes de dados',
+      sublabel: 'FBI, NCMEC e mais',
     },
-    { value: '1.204', label: 'Alertas enviados', sublabel: 'este mês' },
-    { value: '847', label: 'Encontradas', sublabel: 'este ano' },
   ]
 
   return (
@@ -374,11 +309,38 @@ export default async function HomePage() {
             </div>
 
             {/* Desktop: 4-col grid. Mobile: 2-col grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {recentCases.map((c, idx) => (
-                <CaseCard key={c.id} caseData={c} priority={idx < 4} />
-              ))}
-            </div>
+            {recentCases.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {recentCases.map((c, idx) => (
+                  <CaseCard key={c.id} caseData={c} priority={idx < 4} />
+                ))}
+              </div>
+            ) : (
+              <div
+                className="text-center py-12 px-6 rounded-xl"
+                style={{
+                  backgroundColor: 'var(--color-bg-secondary)',
+                  border: '1px dashed var(--color-border)',
+                }}
+              >
+                <p
+                  className="text-lg mb-2"
+                  style={{
+                    fontFamily: 'var(--font-heading)',
+                    color: 'var(--color-deep-indigo)',
+                    fontWeight: 300,
+                  }}
+                >
+                  Nenhum caso ativo no momento
+                </p>
+                <p
+                  className="text-sm"
+                  style={{ color: 'var(--color-text-secondary)' }}
+                >
+                  O sistema esta integrando dados de fontes oficiais. Os casos aparecerao aqui assim que estiverem disponiveis.
+                </p>
+              </div>
+            )}
           </div>
         </section>
 
@@ -389,7 +351,7 @@ export default async function HomePage() {
           aria-label="Estatísticas de impacto"
         >
           <div className="max-w-5xl mx-auto">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            <div className="grid grid-cols-2 gap-8 max-w-2xl mx-auto">
               {stats.map((stat) => (
                 <StatCard
                   key={stat.label}

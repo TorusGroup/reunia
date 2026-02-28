@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { checkAdminAuth } from '@/lib/admin-auth'
 
 // =============================================================
 // POST /api/v1/face-embeddings — Save a face embedding
 // GET  /api/v1/face-embeddings — Count searchable embeddings
 // Used by the admin embeddings generator page.
-// Auth: x-admin-key header required for POST
+// Auth: admin JWT or API key required for POST (S-01)
 // =============================================================
 
 const postBodySchema = z.object({
@@ -24,12 +25,6 @@ const postBodySchema = z.object({
     .optional(),
   faceConfidence: z.number().min(0).max(1).optional(),
 })
-
-function checkAdminKey(request: NextRequest): boolean {
-  const adminKey = request.headers.get('x-admin-key') ?? ''
-  const expectedKey = process.env.ADMIN_INGESTION_KEY ?? 'reunia-admin'
-  return adminKey === expectedKey
-}
 
 export async function GET(): Promise<NextResponse> {
   try {
@@ -60,9 +55,10 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (!checkAdminKey(request)) {
+  const adminAuth = await checkAdminAuth(request)
+  if (!adminAuth.authorized) {
     return NextResponse.json(
-      { success: false, error: { code: 'UNAUTHORIZED', message: 'Admin key required' } },
+      { success: false, error: { code: 'UNAUTHORIZED', message: 'Admin authentication required' } },
       { status: 401 }
     )
   }
@@ -93,6 +89,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
+    // Consent check before storing embedding (S-02)
+    const image = await db.image.findUnique({
+      where: { id: body.imageId },
+      select: {
+        person: {
+          select: {
+            case: {
+              select: { consentGiven: true }
+            }
+          }
+        }
+      }
+    })
+    if (!image?.person?.case?.consentGiven) {
+      return NextResponse.json(
+        { success: false, error: { code: 'CONSENT_REQUIRED', message: 'Consent for biometric processing not granted for this case' } },
+        { status: 403 }
+      )
+    }
+
     // Encode the 128-dim descriptor as a binary Buffer (Float32Array layout)
     const float32 = new Float32Array(body.descriptor)
     const embeddingBuffer = Buffer.from(float32.buffer)

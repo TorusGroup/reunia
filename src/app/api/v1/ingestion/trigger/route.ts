@@ -1,13 +1,14 @@
 // =============================================================
 // POST /api/v1/ingestion/trigger
 // Synchronous ingestion trigger — NO BullMQ, runs inline
-// Auth: x-admin-key header (simple shared secret)
+// Auth: admin JWT or API key (S-01/S-03 — shared admin auth)
 // =============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { checkAdminAuth } from '@/lib/admin-auth'
 import { runIngestion } from '@/services/ingestion/pipeline'
 import { fbiAdapter } from '@/services/ingestion/fbi-adapter'
 import { interpolAdapter } from '@/services/ingestion/interpol-adapter'
@@ -26,6 +27,8 @@ const triggerSchema = z.object({
   maxPages: z.number().int().min(1).max(50).optional().default(1),
   // purge: delete all cases from this source before importing (useful for re-import)
   purge: z.boolean().optional().default(false),
+  // S-03: purge confirmation gate — must match "DELETE-ALL-{source}" to proceed
+  confirmPurge: z.string().optional(),
 })
 
 // ---------------------------------------------------------------
@@ -38,28 +41,18 @@ const ADAPTERS: Record<string, ISourceAdapter> = {
 }
 
 // ---------------------------------------------------------------
-// Admin key check (simple shared secret)
-// Header: x-admin-key: <value of ADMIN_INGESTION_KEY env var>
-// Falls back to "reunia-admin" if env var not set — for Railway
-// ---------------------------------------------------------------
-function checkAdminAuth(request: NextRequest): boolean {
-  const adminKey = process.env.ADMIN_INGESTION_KEY ?? 'reunia-admin'
-  const headerKey = request.headers.get('x-admin-key')
-  return headerKey === adminKey
-}
-
-// ---------------------------------------------------------------
 // POST /api/v1/ingestion/trigger
 // ---------------------------------------------------------------
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  // Auth check
-  if (!checkAdminAuth(request)) {
+  // Auth check — shared admin auth (JWT or API key)
+  const adminAuth = await checkAdminAuth(request)
+  if (!adminAuth.authorized) {
     return NextResponse.json(
       {
         success: false,
         error: {
           code: 'UNAUTHORIZED',
-          message: 'Missing or invalid x-admin-key header',
+          message: 'Admin authentication required',
         },
       },
       { status: 401 }
@@ -96,7 +89,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   try {
     // Purge existing records if requested (delete cases + cascading persons/images)
+    // S-03: Purge confirmation gate — requires confirmPurge matching "DELETE-ALL-{source}"
     if (purge) {
+      const expectedConfirm = `DELETE-ALL-${source}`
+      if (validation.data.confirmPurge !== expectedConfirm) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'PURGE_CONFIRMATION_REQUIRED',
+              message: `Purge requires confirmPurge: "${expectedConfirm}"`,
+            },
+          },
+          { status: 400 }
+        )
+      }
+
+      // Audit log BEFORE deletion (S-03)
+      logger.warn(
+        { source, purge: true, userId: adminAuth.userId ?? 'api-key' },
+        'PURGE OPERATION: deleting all cases from source'
+      )
+
       const sourcesToPurge = source === 'all' ? Object.keys(ADAPTERS) : [source]
       for (const s of sourcesToPurge) {
         const deleted = await db.case.deleteMany({ where: { source: s as never } })

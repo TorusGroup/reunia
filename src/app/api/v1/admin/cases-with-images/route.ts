@@ -1,24 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { checkAdminAuth } from '@/lib/admin-auth'
 
 // =============================================================
 // GET /api/v1/admin/cases-with-images
 // Returns cases that have at least one image, including the
 // image ID needed for face embedding generation.
-// Auth: x-admin-key header required
+// Auth: admin JWT or API key required (S-01)
 // =============================================================
 
-function checkAdminKey(request: NextRequest): boolean {
-  const adminKey = request.headers.get('x-admin-key') ?? ''
-  const expectedKey = process.env.ADMIN_INGESTION_KEY ?? 'reunia-admin'
-  return adminKey === expectedKey
-}
-
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!checkAdminKey(request)) {
+  const adminAuth = await checkAdminAuth(request)
+  if (!adminAuth.authorized) {
     return NextResponse.json(
-      { success: false, error: { code: 'UNAUTHORIZED', message: 'Admin key required' } },
+      { success: false, error: { code: 'UNAUTHORIZED', message: 'Admin authentication required' } },
       { status: 401 }
     )
   }

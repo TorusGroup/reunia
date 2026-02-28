@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { cache } from '@/lib/redis'
 import { logger } from '@/lib/logger'
 import { ErrorCodes } from '@/types'
+import { requireRole } from '@/lib/api-auth'
 
 // =============================================================
 // GET /api/v1/le/admin/search/analytics
@@ -145,8 +146,9 @@ async function buildAnalytics(
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  // TODO: In Sprint 4+, add proper auth middleware check for admin/LE role
-  // For now, this endpoint is accessible; auth enforcement added with E1-S04 integration
+  // Auth: law_enforcement role or higher required (S-03)
+  const auth = requireRole(request, 'law_enforcement')
+  if (auth instanceof NextResponse) return auth
 
   const { searchParams } = new URL(request.url)
   const rawParams = Object.fromEntries(searchParams.entries())

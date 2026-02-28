@@ -62,6 +62,9 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('true'),
+
+  // Admin Ingestion Key (S-01 — Security Hardening)
+  ADMIN_INGESTION_KEY: z.string().min(16, 'ADMIN_INGESTION_KEY must be at least 16 characters'),
 })
 
 // Create a partial schema for optional external services
@@ -87,6 +90,7 @@ const BUILD_DEFAULTS: Record<string, string> = {
   CLOUDINARY_CLOUD_NAME: 'build',
   CLOUDINARY_API_KEY: 'build',
   CLOUDINARY_API_SECRET: 'build',
+  ADMIN_INGESTION_KEY: 'test-admin-key-for-build-12345',
 }
 
 function validateEnv() {

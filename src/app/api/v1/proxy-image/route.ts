@@ -7,9 +7,17 @@ import { logger } from '@/lib/logger'
 // images (fbi.gov, missingkids.org) for face detection in the
 // browser via face-api.js.
 //
-// Security: Only allowed domains are proxied.
+// Security: Only allowed domains are proxied. CORS restricted (S-04).
 // Cache: 24h via Cache-Control header.
 // =============================================================
+
+// Allowed origins for CORS (S-04 — no more wildcard)
+const ALLOWED_ORIGINS = [
+  process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000',
+  'https://reunia.org',
+  'https://www.reunia.org',
+  'https://app.reunia.org',
+]
 
 const ALLOWED_HOSTNAMES = [
   'api.fbi.gov',
@@ -87,15 +95,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const arrayBuffer = await upstream.arrayBuffer()
 
-    return new NextResponse(arrayBuffer, {
-      status: 200,
-      headers: {
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=86400, immutable',
-        'Access-Control-Allow-Origin': '*',
-        'X-Proxy-Source': 'reunia-image-proxy',
-      },
-    })
+    // Build CORS headers — restricted to allowed origins (S-04)
+    const requestOrigin = request.headers.get('origin')
+    const corsHeaders: Record<string, string> = {
+      'Content-Type': contentType,
+      'Cache-Control': 'public, max-age=86400, immutable',
+      'X-Proxy-Source': 'reunia-image-proxy',
+      'Vary': 'Origin',
+    }
+    if (requestOrigin && ALLOWED_ORIGINS.includes(requestOrigin)) {
+      corsHeaders['Access-Control-Allow-Origin'] = requestOrigin
+    }
+
+    return new NextResponse(arrayBuffer, { status: 200, headers: corsHeaders })
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       logger.warn({ url: imageUrl }, 'proxy-image: timeout')

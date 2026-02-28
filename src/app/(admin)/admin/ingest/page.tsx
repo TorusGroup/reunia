@@ -88,7 +88,7 @@ export default function AdminIngestPage() {
     setSeedStatus('loading')
     appendLog('Seeding DataSources...')
     try {
-      const res = await fetch('/api/v1/ingestion/seed')
+      const res = await fetch('/api/v1/ingestion/seed', { credentials: 'include' })
       const data: SeedResponse = await res.json()
       setSeedResult(data)
       if (data.success) {
@@ -115,8 +115,8 @@ export default function AdminIngestPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-key': 'reunia-admin',
         },
+        credentials: 'include',
         body: JSON.stringify({ source, maxPages: pages }),
       })
       const data: TriggerResponse = await res.json()

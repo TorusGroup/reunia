@@ -69,7 +69,7 @@ export default function AdminEmbeddingsPage() {
     setCasesLoading(true)
     try {
       const res = await fetch('/api/v1/admin/cases-with-images', {
-        headers: { 'x-admin-key': 'reunia-admin' },
+        credentials: 'include',
       })
       const data = await res.json()
 
@@ -171,8 +171,8 @@ export default function AdminEmbeddingsPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-key': 'reunia-admin',
         },
+        credentials: 'include',
         body: JSON.stringify({
           imageId: item.imageId,
           personId: item.personId,

@@ -163,8 +163,8 @@ export async function rateLimitCheck(
     local count = redis.call('ZCARD', key)
 
     if count < max_requests then
-      -- Add current request
-      redis.call('ZADD', key, now, now)
+      -- Add current request (use now + random suffix to prevent millisecond collisions — S-04)
+      redis.call('ZADD', key, now, now .. ':' .. tostring(math.random()))
       redis.call('EXPIRE', key, window_seconds)
       return {1, max_requests - count - 1}
     else

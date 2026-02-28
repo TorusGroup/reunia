@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { requireAuth } from '@/lib/api-auth'
+import { checkRateLimit, buildRateLimitHeaders, rateLimitExceededBody } from '@/services/security/rate-limiter'
+import { writeAuditLog, getIpFromHeaders } from '@/lib/audit'
 
 // =============================================================
 // POST /api/v1/face-search
 // Browser-side face-api.js generates 128-dim descriptor.
 // Server receives descriptor, compares with stored embeddings
 // via cosine similarity, returns top matches.
-// NO auth required — public endpoint (no biometrics stored).
+// Auth: JWT required (S-02). Rate limited per role.
 // =============================================================
 
 const bodySchema = z.object({
@@ -44,6 +47,20 @@ function decodeEmbedding(bytes: Buffer): number[] {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const startTime = Date.now()
+
+  // ---- Auth check (S-02) ----------------------------------------
+  const auth = requireAuth(request)
+  if (auth instanceof NextResponse) return auth
+
+  // ---- Rate limiting (S-02) -------------------------------------
+  const clientIp = getIpFromHeaders(request.headers) ?? 'unknown'
+  const rateLimit = await checkRateLimit('face_match', auth.role, clientIp)
+  if (!rateLimit.allowed) {
+    return NextResponse.json(rateLimitExceededBody(rateLimit), {
+      status: 429,
+      headers: buildRateLimitHeaders(rateLimit),
+    })
+  }
 
   // ---- Parse & validate body -----------------------------------
   let body: z.infer<typeof bodySchema>
@@ -176,6 +193,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
       'face-search: completed'
     )
+
+    // Audit log (fire-and-forget) — S-02
+    writeAuditLog({
+      userId: auth.userId,
+      action: 'face_match.submit',
+      resourceType: 'face_search',
+      details: {
+        threshold,
+        totalCompared,
+        matchesFound: topMatches.length,
+        processingTimeMs,
+      },
+      ipAddress: clientIp,
+      userAgent: request.headers.get('user-agent') ?? undefined,
+    })
 
     return NextResponse.json({
       success: true,

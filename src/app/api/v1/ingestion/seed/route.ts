@@ -2,12 +2,13 @@
 // GET /api/v1/ingestion/seed
 // Seeds the DataSource table with the known ingestion sources.
 // Idempotent — skips sources that already exist (upsert by slug).
-// No auth required — safe to call on startup.
+// Auth: admin required (S-03)
 // =============================================================
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { checkAdminAuth } from '@/lib/admin-auth'
 
 const SEED_SOURCES = [
   {
@@ -62,7 +63,16 @@ const SEED_SOURCES = [
   },
 ]
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  // Auth check — admin required (S-03)
+  const adminAuth = await checkAdminAuth(request)
+  if (!adminAuth.authorized) {
+    return NextResponse.json(
+      { success: false, error: { code: 'UNAUTHORIZED', message: 'Admin authentication required' } },
+      { status: 401 }
+    )
+  }
+
   try {
     const results: Array<{ slug: string; action: 'created' | 'exists' }> = []
 

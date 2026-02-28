@@ -53,7 +53,7 @@ const SECURITY_HEADERS: Record<string, string> = {
   'Content-Security-Policy': [
     "default-src 'self'",
     "img-src 'self' data: blob: https://res.cloudinary.com https://api.missingkids.org https://www.missingkids.org https://www.fbi.gov https://*.fbi.gov https://ws-public.interpol.int",
-    "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "connect-src 'self' http://localhost:* https://api.reunia.org https://*.railway.app",
@@ -185,10 +185,10 @@ export function middleware(request: NextRequest): NextResponse {
     // the authentication gate; authorization is handled in route handlers.
   }
 
-  // Add request ID for tracing
+  // Add request ID for tracing (S-04: crypto.randomUUID instead of Math.random)
   const requestId =
     request.headers.get('x-request-id') ??
-    `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+    crypto.randomUUID()
 
   // Build response with security headers
   const response = NextResponse.next({

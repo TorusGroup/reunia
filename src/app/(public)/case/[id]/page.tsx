@@ -8,6 +8,8 @@ import { CaseTimeline } from '@/components/cases/case-timeline'
 import { ShareButtons } from '@/components/cases/share-buttons'
 import { CaseSightings } from '@/components/cases/case-sightings'
 import { CaseMatches } from '@/components/cases/case-matches'
+import { CaseAnalysis } from '@/components/cases/case-analysis'
+import { SimilarCases } from '@/components/cases/similar-cases'
 import type { CaseDetail } from '@/types/cases'
 import type { TimelineEvent } from '@/components/cases/case-timeline'
 import { db } from '@/lib/db'
@@ -518,6 +520,25 @@ export default async function CaseDetailPage({ params }: CaseDetailPageProps) {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* AI Analysis — Feature 1 */}
+          <div className="mt-8">
+            <CaseAnalysis caseId={caseData.id} />
+          </div>
+
+          {/* Similar Cases — Feature 3 */}
+          <div
+            className="mt-8 p-6 rounded-xl"
+            style={{ backgroundColor: 'var(--color-bg-primary)', border: '1px solid var(--color-border)' }}
+          >
+            <h2
+              className="text-base font-bold mb-4"
+              style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-deep-indigo)' }}
+            >
+              Casos Similares
+            </h2>
+            <SimilarCases caseId={caseData.id} />
           </div>
 
           {/* Timeline */}

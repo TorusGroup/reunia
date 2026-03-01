@@ -57,7 +57,8 @@ export function Footer() {
                 { label: 'Buscar', href: '/search' },
                 { label: 'Registrar Caso', href: '/register-case' },
                 { label: 'Reportar Avistamento', href: '/report-sighting' },
-                { label: 'Alertas', href: '/alerts' },
+                { label: 'Alertas Geolocalizados', href: '/geo-alerts' },
+                { label: 'Painel Analitico', href: '/analytics' },
               ].map(({ label, href }) => (
                 <li key={href}>
                   <Link

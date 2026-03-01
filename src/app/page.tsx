@@ -467,7 +467,7 @@ export default async function HomePage() {
               Registrar Caso
             </Link>
             <Link
-              href="/alerts"
+              href="/geo-alerts"
               className="inline-flex items-center gap-2 px-8 py-4 rounded-xl font-semibold text-lg transition-all"
               style={{
                 border: '2px solid var(--color-deep-indigo)',

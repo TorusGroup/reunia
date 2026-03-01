@@ -80,6 +80,20 @@ export default async function ReportSightingPage({ searchParams }: ReportSightin
             <SightingForm defaultCaseId={caseId} />
           </div>
 
+          {/* Chat alternative */}
+          <div className="mt-6 text-center">
+            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+              Prefere relatar via conversa?{' '}
+              <a
+                href={`/report-sighting-chat${caseId ? `?caseId=${caseId}` : ''}`}
+                className="font-medium"
+                style={{ color: 'var(--color-coral-hope)' }}
+              >
+                Usar chat guiado
+              </a>
+            </p>
+          </div>
+
           {/* Help numbers */}
           <div className="mt-8 text-center space-y-2">
             <p className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>

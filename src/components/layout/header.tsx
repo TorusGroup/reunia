@@ -17,7 +17,8 @@ interface NavItem {
 const publicNav: NavItem[] = [
   { label: 'Buscar', href: '/search' },
   { label: 'Busca por Foto', href: '/face-search' },
-  { label: 'Alertas', href: '/alerts' },
+  { label: 'Alertas', href: '/geo-alerts' },
+  { label: 'Analytics', href: '/analytics' },
   { label: 'Avistar', href: '/report-sighting' },
 ]
 

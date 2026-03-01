@@ -1,31 +1,16 @@
 import type { Metadata } from 'next'
+import { AdminDocsClient } from '@/components/admin/admin-docs-client'
 
 // =============================================================
-// Admin Panel — Admin Route Group (placeholder)
-// Full implementation in Sprint 6 (E7) + Sprint 7 (E8)
+// Admin Panel — Project Documentation Viewer
+// Lists all project docs and opens them in an elegant modal
 // =============================================================
 
 export const metadata: Metadata = {
-  title: 'Admin',
+  title: 'Admin — Documentacao',
   robots: { index: false, follow: false },
 }
 
 export default function AdminPage() {
-  return (
-    <main
-      id="main-content"
-      className="min-h-screen p-6"
-      style={{ backgroundColor: 'var(--color-deep-indigo)', minHeight: '100vh' }}
-    >
-      <h1
-        className="text-2xl font-bold mb-4"
-        style={{ fontFamily: 'var(--font-heading)', color: 'white' }}
-      >
-        Admin Panel
-      </h1>
-      <p style={{ color: 'rgba(255,255,255,0.6)' }}>
-        Dashboard administrativo em desenvolvimento. Sprint 6–7.
-      </p>
-    </main>
-  )
+  return <AdminDocsClient />
 }

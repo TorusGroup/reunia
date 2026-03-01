@@ -5,10 +5,12 @@
 // Sprint 4, E5
 // =============================================================
 
+import { useState, useCallback } from 'react'
 import Link from 'next/link'
 import type { CaseSummary } from '@/types/cases'
 import { EmptyState } from '@/components/common/empty-state'
 import { SkeletonResultRow } from '@/components/common/loading'
+import { AvatarPlaceholder } from '@/components/common/avatar-placeholder'
 
 // Source badge colors per wireframe spec
 const SOURCE_COLORS: Record<string, { bg: string; text: string; label: string }> = {
@@ -37,13 +39,16 @@ interface SearchResultRowProps {
 
 function SearchResultRow({ caseData }: SearchResultRowProps) {
   const person = caseData.persons[0]
+  const [imgBroken, setImgBroken] = useState(false)
+  const handleImageError = useCallback(() => setImgBroken(true), [])
+
   if (!person) return null
 
   const name = [person.firstName, person.lastName].filter(Boolean).join(' ') || person.nickname || 'Identidade desconhecida'
   const age = person.approximateAge ?? null
   const days = daysMissing(caseData.lastSeenAt)
   const source = SOURCE_COLORS[caseData.source] ?? SOURCE_COLORS.platform
-  const hasPhoto = !!person.primaryImageUrl
+  const hasPhoto = !!person.primaryImageUrl && !imgBroken
 
   return (
     <article
@@ -78,14 +83,10 @@ function SearchResultRow({ caseData }: SearchResultRowProps) {
             alt={`Foto de ${name}`}
             className="w-full h-full object-cover object-top"
             loading="lazy"
+            onError={handleImageError}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <svg width="28" height="36" viewBox="0 0 28 36" fill="none" aria-hidden="true">
-              <circle cx="14" cy="10" r="7" fill="#D1D5DB" />
-              <path d="M0 30c0-7.732 6.268-14 14-14s14 6.268 14 14" stroke="#D1D5DB" strokeWidth="2" fill="none" />
-            </svg>
-          </div>
+          <AvatarPlaceholder name={name} size="md" className="rounded-lg" />
         )}
       </div>
 

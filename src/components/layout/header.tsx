@@ -86,6 +86,28 @@ export function Header() {
 
         {/* Auth actions */}
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const startTour = (window as any).__reuniaTourStart
+              if (startTour) startTour()
+            }}
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors"
+            style={{
+              color: 'var(--color-text-secondary)',
+              border: '1px solid var(--color-border)',
+              fontFamily: 'var(--font-heading)',
+            }}
+            aria-label="Iniciar tour guiado"
+            title="Tour guiado"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" strokeLinecap="round" />
+              <circle cx="12" cy="17" r="0.5" fill="currentColor" />
+            </svg>
+            Guia
+          </button>
           <Link
             href="/register-case"
             className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white transition-all"

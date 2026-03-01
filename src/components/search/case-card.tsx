@@ -9,6 +9,7 @@
 import { useCallback, useState } from 'react'
 import Link from 'next/link'
 import type { CaseSummary, PersonSummary } from '@/types/cases'
+import { AvatarPlaceholder } from '@/components/common/avatar-placeholder'
 
 // Compute days missing from lastSeenAt
 function daysMissing(lastSeenAt?: string): number | null {
@@ -98,25 +99,7 @@ export function CaseCard({ caseData, priority = false }: CaseCardProps) {
             onError={handleImageError}
           />
         ) : (
-          /* Silhouette fallback per wireframe */
-          <div className="w-full h-full flex items-center justify-center">
-            <svg
-              width="80"
-              height="100"
-              viewBox="0 0 80 100"
-              fill="none"
-              aria-label="Sem foto disponível"
-            >
-              <circle cx="40" cy="28" r="18" fill="#D1D5DB" />
-              <path
-                d="M6 88c0-18.778 15.222-34 34-34s34 15.222 34 34"
-                stroke="#D1D5DB"
-                strokeWidth="4"
-                strokeLinecap="round"
-                fill="none"
-              />
-            </svg>
-          </div>
+          <AvatarPlaceholder name={name} size="full" />
         )}
 
         {/* Status badge overlay */}

@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { AvatarPlaceholder } from '@/components/common/avatar-placeholder'
 
 // =============================================================
 // SimilarCases — Shows cases with similar patterns
@@ -33,6 +34,26 @@ const SOURCE_LABELS: Record<string, string> = {
   amber: 'AMBER',
   platform: 'ReunIA',
   opensanctions: 'OpenSanctions',
+}
+
+function SimilarCaseImage({ src, name }: { src: string | null; name: string }) {
+  const [broken, setBroken] = useState(false)
+  const handleError = useCallback(() => setBroken(true), [])
+
+  if (!src || broken) {
+    return <AvatarPlaceholder name={name} size="full" className="rounded-lg" />
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`/api/v1/proxy-image?url=${encodeURIComponent(src)}`}
+      alt={name}
+      className="w-full h-full object-cover"
+      loading="lazy"
+      onError={handleError}
+    />
+  )
 }
 
 export function SimilarCases({ caseId }: SimilarCasesProps) {
@@ -103,18 +124,7 @@ export function SimilarCases({ caseId }: SimilarCasesProps) {
             className="w-12 h-12 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center"
             style={{ backgroundColor: 'var(--color-bg-tertiary)' }}
           >
-            {c.primaryImageUrl ? (
-              <img
-                src={`/api/v1/proxy-image?url=${encodeURIComponent(c.primaryImageUrl)}`}
-                alt={c.personName}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="1.5" aria-hidden="true">
-                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-                <circle cx="12" cy="7" r="4" />
-              </svg>
-            )}
+            <SimilarCaseImage src={c.primaryImageUrl} name={c.personName} />
           </div>
 
           {/* Info */}

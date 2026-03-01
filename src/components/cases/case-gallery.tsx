@@ -8,6 +8,7 @@
 
 import { useState, useCallback } from 'react'
 import type { ImageDetail } from '@/types/cases'
+import { AvatarPlaceholder } from '@/components/common/avatar-placeholder'
 
 interface CaseGalleryProps {
   images: ImageDetail[]
@@ -46,11 +47,9 @@ export function CaseGallery({ images, personName }: CaseGalleryProps) {
           border: '1px solid var(--color-border)',
         }}
       >
-        {/* Silhouette */}
-        <svg width="80" height="100" viewBox="0 0 80 100" fill="none" aria-hidden="true">
-          <circle cx="40" cy="28" r="18" fill="#D1D5DB" />
-          <path d="M6 88c0-18.778 15.222-34 34-34s34 15.222 34 34" stroke="#D1D5DB" strokeWidth="4" strokeLinecap="round" fill="none" />
-        </svg>
+        <div className="w-24 h-24 rounded-2xl overflow-hidden">
+          <AvatarPlaceholder name={personName} size="full" />
+        </div>
         <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
           Sem foto disponível
         </p>

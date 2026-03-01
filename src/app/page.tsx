@@ -5,6 +5,7 @@ import { Footer } from '@/components/layout/footer'
 import { SearchBar } from '@/components/search/search-bar'
 import { CaseCard } from '@/components/search/case-card'
 import { StatCard } from '@/components/common/stat-card'
+import { GuidedTour } from '@/components/tour/guided-tour'
 import type { CaseSummary } from '@/types/cases'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
@@ -254,9 +255,11 @@ export default async function HomePage() {
   return (
     <>
       <Header />
+      <GuidedTour autoStart />
       <main id="main-content">
         {/* ── HERO SECTION ─────────────────────────────────────────── */}
         <section
+          data-tour="welcome"
           className="pt-12 pb-16 px-6"
           style={{ backgroundColor: 'var(--color-light-canvas)' }}
           aria-label="Busca principal"
@@ -329,6 +332,7 @@ export default async function HomePage() {
 
         {/* ── RECENT CASES ─────────────────────────────────────────── */}
         <section
+          data-tour="recent-cases"
           className="py-12 px-6"
           style={{ backgroundColor: 'var(--color-bg-primary)' }}
           aria-labelledby="recent-cases-heading"
@@ -392,6 +396,7 @@ export default async function HomePage() {
 
         {/* ── STATS BANNER ─────────────────────────────────────────── */}
         <section
+          data-tour="stats"
           className="py-12 px-6"
           style={{ backgroundColor: 'var(--color-deep-indigo)' }}
           aria-label="Estatísticas de impacto"

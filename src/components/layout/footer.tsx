@@ -105,9 +105,18 @@ export function Footer() {
           className="pt-6 border-t flex flex-col sm:flex-row items-center justify-between gap-4"
           style={{ borderColor: 'rgba(255,255,255,0.1)' }}
         >
-          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
-            © {currentYear} ReunIA. Open source sob licença Apache 2.0.
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              © {currentYear} ReunIA. Open source sob licença Apache 2.0.
+            </p>
+            <Link
+              href="/admin"
+              className="text-xs transition-colors"
+              style={{ color: 'rgba(255,255,255,0.25)' }}
+            >
+              Admin
+            </Link>
+          </div>
           <div className="flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
             <span className="text-xs" style={{ fontFamily: 'var(--font-mono)' }}>
               Toda correspondência facial requer revisão humana

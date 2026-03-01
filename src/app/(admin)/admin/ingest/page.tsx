@@ -122,14 +122,14 @@ export default function AdminIngestPage() {
     }
   }
 
-  async function runIngestion(source: 'fbi' | 'interpol' | 'ncmec' | 'amber' | 'all') {
+  async function runIngestion(source: 'fbi' | 'interpol' | 'ncmec' | 'amber' | 'opensanctions' | 'all') {
     if (!adminKey.trim()) {
       appendLog('ERRO: Informe a Admin Key antes de executar')
       setStatus('error')
       return
     }
     setStatus('loading')
-    const pages = source === 'interpol' ? 1 : source === 'ncmec' ? 20 : source === 'amber' ? 1 : 5
+    const pages = source === 'interpol' ? 1 : source === 'ncmec' ? 200 : source === 'amber' ? 1 : source === 'opensanctions' ? 1 : 5
     appendLog(`Iniciando ingestion: source=${source}, maxPages=${pages}`)
     try {
       const res = await fetch('/api/v1/ingestion/trigger', {
@@ -229,7 +229,7 @@ export default function AdminIngestPage() {
                 Passo 1 — Seed DataSources
               </h2>
               <p className="text-sm mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
-                Registra as fontes (FBI, Interpol, NCMEC, AMBER, CNPD) no banco. Seguro de rodar múltiplas vezes.
+                Registra as fontes (FBI, Interpol, NCMEC, AMBER, OpenSanctions, CNPD) no banco. Seguro de rodar múltiplas vezes.
               </p>
             </div>
             <StatusBadge status={seedStatus} />
@@ -290,7 +290,15 @@ export default function AdminIngestPage() {
               className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50"
               style={{ backgroundColor: '#059669', fontFamily: 'var(--font-heading)' }}
             >
-              Importar NCMEC (20pg)
+              Importar NCMEC (Full)
+            </button>
+            <button
+              onClick={() => runIngestion('opensanctions')}
+              disabled={status === 'loading'}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50"
+              style={{ backgroundColor: '#DC2626', fontFamily: 'var(--font-heading)' }}
+            >
+              Importar OpenSanctions/Interpol
             </button>
             <button
               onClick={() => runIngestion('amber')}

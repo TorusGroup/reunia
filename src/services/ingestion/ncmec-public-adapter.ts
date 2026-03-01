@@ -115,9 +115,14 @@ export class NcmecPublicAdapter extends BaseAdapter {
     'https://api.missingkids.org/missingkids/servlet/JSONDataServlet'
 
   async fetch(options: FetchOptions = {}): Promise<RawRecord[]> {
-    const maxPages = options.maxPages ?? 10
+    // Default to 200 pages (enough for ~5,000 records at 25/page)
+    // The loop also respects totalPages from the API response, so it stops
+    // naturally when all records are fetched.
+    const maxPages = options.maxPages ?? 200
     const pageSize = 25
     const allRecords: NcmecPublicCase[] = []
+    let consecutiveErrors = 0
+    const maxConsecutiveErrors = 3
 
     logger.info({ source: this.sourceId, maxPages }, 'NCMEC Public Adapter: starting fetch')
 
@@ -142,8 +147,15 @@ export class NcmecPublicAdapter extends BaseAdapter {
         try {
           data = (await response.json()) as NcmecPublicApiResponse
         } catch {
-          logger.warn({ source: this.sourceId, page }, 'NCMEC Public: invalid JSON response')
-          break
+          logger.warn({ source: this.sourceId, page }, 'NCMEC Public: invalid JSON response, skipping page')
+          consecutiveErrors++
+          if (consecutiveErrors >= maxConsecutiveErrors) {
+            logger.warn({ source: this.sourceId, page, consecutiveErrors }, 'NCMEC Public: too many consecutive errors, stopping')
+            break
+          }
+          page++
+          await this.sleep(2000)
+          continue
         }
 
         // NCMEC returns data in 'persons' array (confirmed via API testing)
@@ -156,24 +168,53 @@ export class NcmecPublicAdapter extends BaseAdapter {
         }
 
         allRecords.push(...cases)
+        consecutiveErrors = 0 // Reset on success
+
+        // Progress logging every 10 pages
+        if (page % 10 === 0) {
+          const totalPages = data.totalPages ?? 'unknown'
+          logger.info(
+            { source: this.sourceId, page, totalPages, recordsSoFar: allRecords.length },
+            `NCMEC Public: progress — page ${page}/${totalPages}, ${allRecords.length} records so far`
+          )
+        }
 
         const totalPages = data.totalPages ?? 0
-        if (totalPages > 0 && page >= totalPages) break
+        if (totalPages > 0 && page >= totalPages) {
+          logger.info(
+            { source: this.sourceId, page, totalPages, records: allRecords.length },
+            'NCMEC Public: reached last page from API'
+          )
+          break
+        }
 
         page++
-        await this.sleep(2000) // 1 req/2s to be conservative
+        // Rate limit: 1 req/2s to be conservative with the public API
+        await this.sleep(2000)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
+        consecutiveErrors++
         logger.warn(
-          { source: this.sourceId, page, msg },
-          'NCMEC Public Adapter: page fetch failed — stopping'
+          { source: this.sourceId, page, msg, consecutiveErrors },
+          'NCMEC Public Adapter: page fetch failed — skipping page'
         )
-        break
+
+        if (consecutiveErrors >= maxConsecutiveErrors) {
+          logger.warn(
+            { source: this.sourceId, page, consecutiveErrors },
+            'NCMEC Public Adapter: too many consecutive errors, stopping pagination'
+          )
+          break
+        }
+
+        // Skip this page and try the next one
+        page++
+        await this.sleep(3000) // Extra delay after error
       }
     }
 
     logger.info(
-      { source: this.sourceId, count: allRecords.length },
+      { source: this.sourceId, count: allRecords.length, pagesScanned: page - (options.page ?? 1) },
       'NCMEC Public Adapter: fetch complete'
     )
 

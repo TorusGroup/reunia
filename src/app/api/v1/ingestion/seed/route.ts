@@ -52,6 +52,16 @@ const SEED_SOURCES = [
     isActive: false, // pending API credentials
   },
   {
+    slug: 'opensanctions',
+    name: 'OpenSanctions — Interpol Yellow Notices',
+    description: 'Interpol Yellow Notices via OpenSanctions daily CSV dump. Workaround for Interpol API cloud IP blocks.',
+    url: 'https://data.opensanctions.org/datasets/latest/interpol_yellow_notices/targets.simple.csv',
+    apiType: 'csv',
+    authRequired: false,
+    pollingIntervalMinutes: 1440,
+    isActive: true,
+  },
+  {
     slug: 'cnpd-brasil',
     name: 'CNPD Brasil — Disque 100',
     description: 'Brazilian national database — Disque 100 Direitos Humanos.',

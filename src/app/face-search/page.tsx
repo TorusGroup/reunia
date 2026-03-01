@@ -166,13 +166,18 @@ export default function FaceSearchPage() {
           setErrorMessage(
             'Nenhum rosto detectado na imagem. Use uma foto com o rosto claramente visivel, bem iluminado e de frente.'
           )
-        } else if (data.error?.code === 'UNAUTHORIZED') {
-          setErrorMessage(
-            'Voce precisa estar logado para usar a busca facial. Faca login e tente novamente.'
-          )
         } else if (data.error?.code === 'RATE_LIMIT_EXCEEDED') {
           setErrorMessage(
             'Muitas tentativas. Aguarde um minuto e tente novamente.'
+          )
+        } else if (data.error?.code === 'INTERNAL_ERROR' || msg.toLowerCase().includes('pipeline failed')) {
+          setErrorMessage(
+            'O servico de reconhecimento facial esta temporariamente indisponivel. '
+            + 'Use a busca por nome enquanto isso. Pedimos desculpas pelo inconveniente.'
+          )
+        } else if (data.error?.code === 'UNAUTHORIZED') {
+          setErrorMessage(
+            'Voce precisa estar logado para usar a busca facial. Faca login e tente novamente.'
           )
         } else {
           setErrorMessage(msg)

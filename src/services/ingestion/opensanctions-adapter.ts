@@ -165,9 +165,21 @@ export class OpenSanctionsAdapter extends BaseAdapter {
     // Source URL for Interpol Yellow Notice
     // Extract notice number from ID: "interpol-yellow-YYYY-NNNNN" -> YYYY/NNNNN
     const idMatch = externalId.match(/interpol-yellow-(\d+)-(\d+)/)
-    const sourceUrl = idMatch
-      ? `https://www.interpol.int/en/How-we-work/Notices/View-Yellow-Notices#${idMatch[1]}-${idMatch[2]}`
+    const noticeSlug = idMatch ? `${idMatch[1]}-${idMatch[2]}` : null
+
+    const sourceUrl = noticeSlug
+      ? `https://www.interpol.int/en/How-we-work/Notices/View-Yellow-Notices#${noticeSlug}`
       : `https://www.interpol.int/en/How-we-work/Notices/View-Yellow-Notices`
+
+    // Construct Interpol image URL from the notice ID.
+    // The OpenSanctions CSV does not include photos, but the Interpol public API
+    // serves images at a predictable URL: /notices/v1/yellow/{id}/images/default
+    // NOTE: This URL returns 403 from cloud/datacenter IPs (Railway, AWS, etc.)
+    // but works from residential IPs (user browsers). The proxy-image endpoint
+    // will return 502 for these, so the frontend must handle broken images gracefully.
+    const photoUrls: string[] = noticeSlug
+      ? [`https://ws-public.interpol.int/notices/v1/yellow/${noticeSlug}/images/default`]
+      : []
 
     return {
       externalId,
@@ -190,7 +202,7 @@ export class OpenSanctionsAdapter extends BaseAdapter {
       ageRange: null,
       heightCm: null,
       weightKg: null,
-      photoUrls: [], // CSV doesn't include photos
+      photoUrls,
       status: 'missing',
       sourceUrl,
       rawData: raw,

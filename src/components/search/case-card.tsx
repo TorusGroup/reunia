@@ -1,9 +1,12 @@
+'use client'
+
 // =============================================================
 // CaseCard — Case card for homepage grid and search results
 // 280x360px, photo 1:1, status badge, days missing counter
 // Sprint 4, E5
 // =============================================================
 
+import { useCallback, useState } from 'react'
 import Link from 'next/link'
 import type { CaseSummary, PersonSummary } from '@/types/cases'
 
@@ -36,11 +39,17 @@ interface CaseCardProps {
 
 export function CaseCard({ caseData, priority = false }: CaseCardProps) {
   const person = caseData.persons[0]
+  const [imgBroken, setImgBroken] = useState(false)
+
+  const handleImageError = useCallback(() => {
+    setImgBroken(true)
+  }, [])
+
   if (!person) return null
 
   const { name, age } = getPersonDisplay(person)
   const days = daysMissing(caseData.lastSeenAt)
-  const hasPhoto = !!person.primaryImageUrl
+  const hasPhoto = !!person.primaryImageUrl && !imgBroken
 
   const statusLabels: Record<string, string> = {
     active: 'ATIVO',
@@ -86,6 +95,7 @@ export function CaseCard({ caseData, priority = false }: CaseCardProps) {
             alt={`Foto de ${name}`}
             className="w-full h-full object-cover object-top transition-transform duration-300 group-hover:scale-105"
             loading={priority ? 'eager' : 'lazy'}
+            onError={handleImageError}
           />
         ) : (
           /* Silhouette fallback per wireframe */

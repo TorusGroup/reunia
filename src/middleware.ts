@@ -28,11 +28,13 @@ const PUBLIC_ROUTES = [
   '/search',
   '/casos',
   '/report-sighting',
+  '/face-search',
   '/api/v1/cases/search',
   '/api/v1/cases/stats',
   '/api/v1/alerts/subscribe',
   '/api/v1/health',
   '/api/auth',
+  '/api/v1/face/match', // Public face search with tiered rate limits (route handler enforces limits)
 ]
 
 // Allowed origins for CORS

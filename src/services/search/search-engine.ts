@@ -201,7 +201,7 @@ export async function executeTextSearch(
 
   // --- Full-text / trigram search ---
   let rankExpression = '0.0::float4 AS rank'
-  let nameSortExpression = `COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '') AS name_sort`
+  let nameSortExpression = `COALESCE(p.name_normalized, LOWER(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')), '') AS name_sort`
   let textSearchCondition = ''
 
   if (params.q && params.q.length > 0) {
@@ -219,37 +219,44 @@ export async function executeTextSearch(
       sqlParams.push(normalizedQuery)
       const trigramParam = `$${sqlParams.length}`
 
+      // Build a synthetic name column from first_name + last_name as fallback
+      // when name_normalized is NULL (GENERATED column migration not applied)
+      const nameExpr = `COALESCE(p.name_normalized, LOWER(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')), '')`
+
       // Portuguese + English dictionary combination
       // ts_rank_cd with document length normalization
       rankExpression = `
         GREATEST(
           COALESCE(ts_rank_cd(
-            to_tsvector('portuguese', COALESCE(p.name_normalized, '')),
+            to_tsvector('simple', ${nameExpr}),
             ${tsQueryParam}
           ), 0),
           COALESCE(ts_rank_cd(
-            to_tsvector('english', COALESCE(p.name_normalized, '')),
+            to_tsvector('english', ${nameExpr}),
             ${tsQueryParamEn}
           ), 0),
-          COALESCE(similarity(p.name_normalized, ${trigramParam}), 0)
+          COALESCE(similarity(${nameExpr}, ${trigramParam}), 0)
         ) AS rank
       `
 
       // Full-text OR trigram match condition
+      // Uses ILIKE on first_name/last_name as a robust fallback
       textSearchCondition = `
         AND (
-          (p.name_normalized IS NOT NULL AND to_tsvector('portuguese', p.name_normalized) @@ ${tsQueryParam})
-          OR (p.name_normalized IS NOT NULL AND to_tsvector('english', p.name_normalized) @@ ${tsQueryParamEn})
-          OR (p.name_normalized IS NOT NULL AND similarity(p.name_normalized, ${trigramParam}) > 0.3)
+          (to_tsvector('simple', ${nameExpr}) @@ ${tsQueryParam})
+          OR (to_tsvector('english', ${nameExpr}) @@ ${tsQueryParamEn})
+          OR (similarity(${nameExpr}, ${trigramParam}) > 0.3)
+          OR (p.first_name ILIKE '%' || ${trigramParam} || '%')
+          OR (p.last_name ILIKE '%' || ${trigramParam} || '%')
           OR (c.last_seen_location ILIKE '%' || ${trigramParam} || '%')
           OR (c.circumstances ILIKE '%' || ${trigramParam} || '%')
         )
       `
     }
 
-    nameSortExpression = `COALESCE(p.name_normalized, '') AS name_sort`
+    nameSortExpression = `COALESCE(p.name_normalized, LOWER(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')), '') AS name_sort`
   } else {
-    nameSortExpression = `COALESCE(p.name_normalized, '') AS name_sort`
+    nameSortExpression = `COALESCE(p.name_normalized, LOWER(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')), '') AS name_sort`
   }
 
   // --- Geo filter ---
@@ -481,6 +488,8 @@ export async function suggestNames(query: string): Promise<SuggestResult[]> {
 
   if (!tsQuery) return []
 
+  // Build a fallback name expression when name_normalized is NULL
+  // (GENERATED column migration may not have been applied)
   const rows = await db.$queryRaw<
     Array<{
       name: string
@@ -491,18 +500,30 @@ export async function suggestNames(query: string): Promise<SuggestResult[]> {
     SELECT DISTINCT
       COALESCE(p.first_name || ' ' || COALESCE(p.last_name, ''), p.first_name, p.last_name, 'Unknown') AS name,
       c.id AS case_id,
-      word_similarity(p.name_normalized, ${normalized}) AS sim
+      COALESCE(
+        word_similarity(
+          COALESCE(p.name_normalized, LOWER(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, ''))),
+          ${normalized}
+        ),
+        0
+      ) AS sim
     FROM persons p
     INNER JOIN cases c ON c.id = p.case_id
     WHERE
       p.role = 'missing_child'
       AND c.status = 'active'
       AND c.anonymized_at IS NULL
-      AND p.name_normalized IS NOT NULL
+      AND (p.first_name IS NOT NULL OR p.last_name IS NOT NULL)
       AND (
-        word_similarity(p.name_normalized, ${normalized}) > 0.25
-        OR to_tsvector('portuguese', p.name_normalized) @@ to_tsquery('portuguese', ${tsQuery})
-        OR to_tsvector('english', p.name_normalized) @@ to_tsquery('english', ${tsQuery})
+        word_similarity(
+          COALESCE(p.name_normalized, LOWER(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, ''))),
+          ${normalized}
+        ) > 0.25
+        OR p.first_name ILIKE '%' || ${normalized} || '%'
+        OR p.last_name ILIKE '%' || ${normalized} || '%'
+        OR to_tsvector('simple',
+          COALESCE(p.name_normalized, LOWER(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')))
+        ) @@ to_tsquery('simple', ${tsQuery})
       )
     ORDER BY sim DESC, name ASC
     LIMIT 8

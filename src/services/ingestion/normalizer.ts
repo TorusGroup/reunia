@@ -24,15 +24,7 @@ export function normalizeNameForSearch(name: string): string {
 // Handles "LASTNAME, FIRSTNAME" or "FIRSTNAME LASTNAME" patterns
 // ---------------------------------------------------------------
 export function splitFullName(fullName: string): { firstName: string; lastName: string } {
-  let trimmed = fullName.trim()
-
-  // ViCAP pattern: "NAME - CITY, STATE" — strip location suffix before parsing
-  // The dash separates the person name from the location where they went missing.
-  // e.g. "JOHN LIMA - CHELSEA, MASSACHUSETTS" → name is "JOHN LIMA"
-  const dashIdx = trimmed.indexOf(' - ')
-  if (dashIdx > 0) {
-    trimmed = trimmed.substring(0, dashIdx).trim()
-  }
+  const trimmed = fullName.trim()
 
   // Pattern: "LASTNAME, FIRSTNAME MIDDLENAME"
   if (trimmed.includes(',')) {

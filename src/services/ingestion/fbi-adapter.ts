@@ -1,6 +1,6 @@
 // =============================================================
 // FBI Wanted API Adapter — E2-S02
-// Endpoint: GET https://api.fbi.gov/wanted/v1/list
+// Endpoint: GET https://api.fbi.gov/@wanted?classification=missing
 // No auth required — public API
 // Rate: 1 req/sec (precautionary)
 // =============================================================
@@ -24,10 +24,7 @@ interface FbiRecord {
   uid: string
   title: string
   description?: string
-  caution?: string
   classification?: string
-  poster_classification?: string
-  subjects?: string[]
   dates_of_birth_used?: string[]
   possible_birth_years?: string[]
   height_min?: number
@@ -64,41 +61,11 @@ export class FbiAdapter extends BaseAdapter {
   readonly sourceName = 'FBI Wanted — Missing Persons'
   readonly pollingIntervalMinutes = 360 // 6 hours
 
-  private readonly baseUrl = 'https://api.fbi.gov/wanted/v1/list'
-  private readonly pageSize = 50
-
-  // Client-side heuristic: returns true if a record is a missing/kidnapped person.
-  //
-  // Uses structured FBI API fields (poster_classification, subjects) instead of
-  // free-text search in description/caution — the old approach matched CRIMINALS
-  // who committed kidnapping (e.g. Iranian intelligence operatives) rather than
-  // the actual missing victims.
-  //
-  // Relevant poster_classification values: "missing", "kidnapping"
-  // Relevant subjects: "Kidnappings and Missing Persons", "ViCAP Missing Persons",
-  //                     "ViCAP Unidentified Persons"
-  private isMissingPerson(record: FbiRecord): boolean {
-    // Explicit missing_persons array (rarely populated but authoritative)
-    if (record.missing_persons && record.missing_persons.length > 0) return true
-
-    // poster_classification is the primary structured indicator
-    const posterClass = (record.poster_classification ?? '').toLowerCase()
-    if (posterClass === 'missing' || posterClass === 'kidnapping') return true
-
-    // subjects array contains category tags
-    const subjects = (record.subjects ?? []).map((s) => s.toLowerCase())
-    const missingSubjects = [
-      'kidnappings and missing persons',
-      'vicap missing persons',
-      'vicap unidentified persons',
-    ]
-    if (subjects.some((s) => missingSubjects.includes(s))) return true
-
-    return false
-  }
+  private readonly baseUrl = 'https://api.fbi.gov/@wanted'
+  private readonly pageSize = 20
 
   async fetch(options: FetchOptions = {}): Promise<RawRecord[]> {
-    const maxPages = options.maxPages ?? 30
+    const maxPages = options.maxPages ?? 50
     const allRecords: FbiRecord[] = []
 
     logger.info({ source: this.sourceId }, 'FBI Adapter: starting fetch')
@@ -107,12 +74,9 @@ export class FbiAdapter extends BaseAdapter {
 
     while (page <= maxPages) {
       try {
-        // No person_classification filter — the "Missing Persons" value returns 0 results.
-        // We fetch all wanted records and apply client-side filtering below.
-        const url = `${this.baseUrl}?page=${page}&pageSize=${this.pageSize}`
+        const url = `${this.baseUrl}?classification=missing&page=${page}&pageSize=${this.pageSize}`
 
-        // Use shorter retry delays (1s initial) to avoid Railway request timeouts
-        const response = await this.fetchWithRetry(url, {}, 3, 1000)
+        const response = await this.fetchWithRetry(url)
         const data = (await response.json()) as FbiApiResponse
 
         if (!data.items || data.items.length === 0) {
@@ -140,21 +104,12 @@ export class FbiAdapter extends BaseAdapter {
       }
     }
 
-    // Filter to missing-persons records ONLY. Never fall back to all records —
-    // that would import criminals (kidnappers, fugitives) into a missing children platform.
-    // If none match (e.g. schema changed), return empty — better no data than wrong data.
-    const finalRecords = allRecords.filter((r) => this.isMissingPerson(r))
-
     logger.info(
-      {
-        source: this.sourceId,
-        total: allRecords.length,
-        missingFiltered: finalRecords.length,
-      },
+      { source: this.sourceId, count: allRecords.length },
       'FBI Adapter: fetch complete'
     )
 
-    return finalRecords as RawRecord[]
+    return allRecords as RawRecord[]
   }
 
   normalize(raw: RawRecord): NormalizedCase {

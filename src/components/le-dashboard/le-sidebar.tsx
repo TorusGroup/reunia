@@ -19,7 +19,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: 'Visão Geral', href: '/le-dashboard', icon: '◎' },
   { label: 'Casos', href: '/le-dashboard/cases', icon: '📁' },
-  { label: 'Validacao HITL', href: '/le-dashboard/validation', icon: '🔍', badge: '!' },
+  { label: 'Validação HITL', href: '/le-dashboard/validation', icon: '🔍', badge: '!' },
   { label: 'Avistamentos', href: '/le-dashboard/sightings', icon: '👁' },
   { label: 'Analytics', href: '/le-dashboard/analytics', icon: '📊' },
   { label: 'Alerta Âmbar', href: '/le-dashboard/broadcast', icon: '⚠' },

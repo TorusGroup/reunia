@@ -124,7 +124,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         data: {
           searchType: 'text',
           query: params.q ? params.q.slice(0, 200) : null,
-          filters: response.filters ? JSON.parse(JSON.stringify(response.filters)) : undefined,
+          filters: response.filters as Record<string, unknown>,
           resultCount: response.total,
           durationMs,
           ipAddress: ip,

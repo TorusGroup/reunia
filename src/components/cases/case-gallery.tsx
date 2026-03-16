@@ -8,7 +8,6 @@
 
 import { useState, useCallback } from 'react'
 import type { ImageDetail } from '@/types/cases'
-import { AvatarPlaceholder } from '@/components/common/avatar-placeholder'
 
 interface CaseGalleryProps {
   images: ImageDetail[]
@@ -18,27 +17,19 @@ interface CaseGalleryProps {
 export function CaseGallery({ images, personName }: CaseGalleryProps) {
   const [activeIdx, setActiveIdx] = useState(0)
   const [lightboxOpen, setLightboxOpen] = useState(false)
-  const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set())
 
-  const handleImageError = useCallback((imageId: string) => {
-    setBrokenImages((prev) => new Set(prev).add(imageId))
-  }, [])
-
-  // Filter out broken images
-  const validImages = images.filter((img) => !brokenImages.has(img.id))
-  const safeActiveIdx = Math.min(activeIdx, validImages.length - 1)
-  const activeImage = validImages[safeActiveIdx]
+  const activeImage = images[activeIdx]
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === 'ArrowLeft' && safeActiveIdx > 0) setActiveIdx(safeActiveIdx - 1)
-      if (e.key === 'ArrowRight' && safeActiveIdx < validImages.length - 1) setActiveIdx(safeActiveIdx + 1)
+      if (e.key === 'ArrowLeft' && activeIdx > 0) setActiveIdx(activeIdx - 1)
+      if (e.key === 'ArrowRight' && activeIdx < images.length - 1) setActiveIdx(activeIdx + 1)
       if (e.key === 'Escape') setLightboxOpen(false)
     },
-    [safeActiveIdx, validImages.length]
+    [activeIdx, images.length]
   )
 
-  if (!validImages.length) {
+  if (!images.length) {
     return (
       <div
         className="rounded-xl flex flex-col items-center justify-center gap-4 py-12"
@@ -47,9 +38,11 @@ export function CaseGallery({ images, personName }: CaseGalleryProps) {
           border: '1px solid var(--color-border)',
         }}
       >
-        <div className="w-24 h-24 rounded-2xl overflow-hidden">
-          <AvatarPlaceholder name={personName} size="full" />
-        </div>
+        {/* Silhouette */}
+        <svg width="80" height="100" viewBox="0 0 80 100" fill="none" aria-hidden="true">
+          <circle cx="40" cy="28" r="18" fill="#D1D5DB" />
+          <path d="M6 88c0-18.778 15.222-34 34-34s34 15.222 34 34" stroke="#D1D5DB" strokeWidth="4" strokeLinecap="round" fill="none" />
+        </svg>
         <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
           Sem foto disponível
         </p>
@@ -74,25 +67,24 @@ export function CaseGallery({ images, personName }: CaseGalleryProps) {
         onKeyDown={handleKeyDown}
         tabIndex={0}
         role="button"
-        aria-label={`Ampliar foto ${safeActiveIdx + 1} de ${validImages.length}`}
+        aria-label={`Ampliar foto ${activeIdx + 1} de ${images.length}`}
       >
         {activeImage && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={activeImage.storageUrl}
-            alt={`${personName} — foto ${safeActiveIdx + 1}`}
+            alt={`${personName} — foto ${activeIdx + 1}`}
             className="w-full h-full object-cover"
             style={{ objectPosition: 'top center' }}
             loading="eager"
-            onError={() => handleImageError(activeImage.id)}
           />
         )}
         {/* Navigation arrows */}
-        {validImages.length > 1 && (
+        {images.length > 1 && (
           <>
             <button
-              onClick={(e) => { e.stopPropagation(); setActiveIdx(Math.max(0, safeActiveIdx - 1)) }}
-              disabled={safeActiveIdx === 0}
+              onClick={(e) => { e.stopPropagation(); setActiveIdx(Math.max(0, activeIdx - 1)) }}
+              disabled={activeIdx === 0}
               className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center transition-all disabled:opacity-30"
               style={{ backgroundColor: 'rgba(255,255,255,0.85)' }}
               aria-label="Foto anterior"
@@ -100,8 +92,8 @@ export function CaseGallery({ images, personName }: CaseGalleryProps) {
               ←
             </button>
             <button
-              onClick={(e) => { e.stopPropagation(); setActiveIdx(Math.min(validImages.length - 1, safeActiveIdx + 1)) }}
-              disabled={safeActiveIdx === validImages.length - 1}
+              onClick={(e) => { e.stopPropagation(); setActiveIdx(Math.min(images.length - 1, activeIdx + 1)) }}
+              disabled={activeIdx === images.length - 1}
               className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center transition-all disabled:opacity-30"
               style={{ backgroundColor: 'rgba(255,255,255,0.85)' }}
               aria-label="Próxima foto"
@@ -113,9 +105,9 @@ export function CaseGallery({ images, personName }: CaseGalleryProps) {
       </div>
 
       {/* Thumbnail strip */}
-      {validImages.length > 1 && (
+      {images.length > 1 && (
         <div className="flex gap-2 mt-3 overflow-x-auto" aria-label="Miniaturas de fotos">
-          {validImages.map((img, idx) => (
+          {images.map((img, idx) => (
             <button
               key={img.id}
               onClick={() => setActiveIdx(idx)}
@@ -123,14 +115,14 @@ export function CaseGallery({ images, personName }: CaseGalleryProps) {
               style={{
                 width: '56px',
                 height: '72px',
-                border: idx === safeActiveIdx
+                border: idx === activeIdx
                   ? '2px solid var(--color-coral-hope)'
                   : '2px solid transparent',
-                opacity: idx === safeActiveIdx ? 1 : 0.6,
+                opacity: idx === activeIdx ? 1 : 0.6,
                 backgroundColor: 'var(--color-bg-tertiary)',
               }}
               aria-label={`Foto ${idx + 1}`}
-              aria-pressed={idx === safeActiveIdx}
+              aria-pressed={idx === activeIdx}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -138,7 +130,6 @@ export function CaseGallery({ images, personName }: CaseGalleryProps) {
                 alt=""
                 className="w-full h-full object-cover"
                 loading="lazy"
-                onError={() => handleImageError(img.id)}
               />
             </button>
           ))}
@@ -169,15 +160,15 @@ export function CaseGallery({ images, personName }: CaseGalleryProps) {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={activeImage.storageUrl}
-              alt={`${personName} — foto ${safeActiveIdx + 1}`}
+              alt={`${personName} — foto ${activeIdx + 1}`}
               className="max-h-[90vh] max-w-full object-contain rounded-xl"
             />
           </div>
-          {validImages.length > 1 && (
+          {images.length > 1 && (
             <>
               <button
-                onClick={(e) => { e.stopPropagation(); setActiveIdx(Math.max(0, safeActiveIdx - 1)) }}
-                disabled={safeActiveIdx === 0}
+                onClick={(e) => { e.stopPropagation(); setActiveIdx(Math.max(0, activeIdx - 1)) }}
+                disabled={activeIdx === 0}
                 className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-white disabled:opacity-30"
                 style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
                 aria-label="Foto anterior"
@@ -185,8 +176,8 @@ export function CaseGallery({ images, personName }: CaseGalleryProps) {
                 ←
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); setActiveIdx(Math.min(validImages.length - 1, safeActiveIdx + 1)) }}
-                disabled={safeActiveIdx === validImages.length - 1}
+                onClick={(e) => { e.stopPropagation(); setActiveIdx(Math.min(images.length - 1, activeIdx + 1)) }}
+                disabled={activeIdx === images.length - 1}
                 className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-white disabled:opacity-30"
                 style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
                 aria-label="Próxima foto"

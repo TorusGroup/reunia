@@ -6,103 +6,63 @@ import { Footer } from '@/components/layout/footer'
 import { CaseGallery } from '@/components/cases/case-gallery'
 import { CaseTimeline } from '@/components/cases/case-timeline'
 import { ShareButtons } from '@/components/cases/share-buttons'
-import { CaseSightings } from '@/components/cases/case-sightings'
-import { CaseMatches } from '@/components/cases/case-matches'
-import { CaseAnalysis } from '@/components/cases/case-analysis'
-import { SimilarCases } from '@/components/cases/similar-cases'
 import type { CaseDetail } from '@/types/cases'
 import type { TimelineEvent } from '@/components/cases/case-timeline'
-import { db } from '@/lib/db'
-import { logger } from '@/lib/logger'
 
 // =============================================================
-// Case Detail Page — Public Route Group (Sprint 4, E5-S03 + Sprint 7 LE-03)
-// Server Component — fetches real data from DB, falls back to notFound
-// Sprint 7: Added sightings history, face matches, source data
+// Case Detail Page — Public Route Group (Sprint 4, E5-S03)
+// Server Component — SSG possible once API is stable
 // =============================================================
 
 interface CaseDetailPageProps {
   params: Promise<{ id: string }>
 }
 
-// Real DB lookup with full relations
+// Mock data function — replace with real API call in Sprint 5
 async function getCaseDetail(id: string): Promise<CaseDetail | null> {
-  try {
-    const c = await db.case.findUnique({
-      where: { id },
-      include: {
-        persons: {
-          include: {
-            images: { orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }] },
-          },
-        },
-      },
-    })
-
-    if (!c) return null
-
-    return {
-      id: c.id,
-      caseNumber: c.caseNumber,
-      caseType: c.caseType as CaseDetail['caseType'],
-      status: c.status as CaseDetail['status'],
-      urgency: c.urgency as CaseDetail['urgency'],
-      reportedAt: c.reportedAt.toISOString(),
-      lastSeenAt: c.lastSeenAt?.toISOString(),
-      lastSeenLocation: c.lastSeenLocation ?? undefined,
-      lastSeenCountry: c.lastSeenCountry ?? undefined,
-      source: c.source as CaseDetail['source'],
-      dataQuality: c.dataQuality,
-      circumstances: c.circumstances ?? undefined,
-      sourceUrl: c.sourceUrl ?? undefined,
-      rewardAmount: c.rewardAmount ? Number(c.rewardAmount) : undefined,
-      rewardCurrency: c.rewardCurrency ?? undefined,
-      consentGiven: c.consentGiven,
-      resolvedAt: c.resolvedAt?.toISOString(),
-      createdAt: c.createdAt.toISOString(),
-      updatedAt: c.updatedAt.toISOString(),
-      persons: c.persons.map((p) => ({
-        id: p.id,
-        role: p.role as CaseDetail['persons'][number]['role'],
-        firstName: p.firstName ?? undefined,
-        lastName: p.lastName ?? undefined,
-        aliases: (p.aliases as string[] | null) ?? [],
-        nickname: p.nickname ?? undefined,
-        approximateAge: p.approximateAge ?? undefined,
-        ageAtDisappearance: p.ageAtDisappearance ?? undefined,
-        dateOfBirth: p.dateOfBirth?.toISOString().split('T')[0],
-        gender: (p.gender ?? undefined) as CaseDetail['persons'][number]['gender'],
-        nationality: (p.nationality as string[] | null) ?? [],
-        heightCm: p.heightCm ?? undefined,
-        weightKg: p.weightKg ?? undefined,
-        hairColor: p.hairColor ?? undefined,
-        hairLength: p.hairLength ?? undefined,
-        eyeColor: p.eyeColor ?? undefined,
-        skinTone: p.skinTone ?? undefined,
-        distinguishingMarks: p.distinguishingMarks ?? undefined,
-        clothingDescription: p.clothingDescription ?? undefined,
-        medicalConditions: p.medicalConditions ?? undefined,
-        languagesSpoken: (p.languagesSpoken as string[] | null) ?? [],
-        images: p.images.map((img) => ({
-          id: img.id,
-          storageUrl: img.storageUrl,
-          thumbnailUrl: img.thumbnailUrl ?? undefined,
-          imageType: img.imageType as CaseDetail['persons'][number]['images'][number]['imageType'],
-          isPrimary: img.isPrimary,
-          takenAt: img.takenAt?.toISOString(),
-          sourceAttribution: img.sourceAttribution ?? undefined,
-          width: img.width ?? undefined,
-          height: img.height ?? undefined,
-          hasFace: img.hasFace ?? undefined,
-          faceQualityScore: img.faceQualityScore ?? undefined,
-          createdAt: img.createdAt.toISOString(),
-        })),
-      })),
-    }
-  } catch (err) {
-    logger.error({ err, id }, 'getCaseDetail: DB error')
-    return null
+  const MOCK_CASES: Record<string, CaseDetail> = {
+    '550e8400-e29b-41d4-a716-446655440001': {
+      id: '550e8400-e29b-41d4-a716-446655440001',
+      caseNumber: 'REUNIA-2026-000001',
+      caseType: 'missing',
+      status: 'active',
+      urgency: 'high',
+      reportedAt: '2026-02-24T00:00:00Z',
+      lastSeenAt: '2026-02-24T14:30:00Z',
+      lastSeenLocation: 'Av. Paulista, São Paulo, SP',
+      lastSeenCountry: 'BR',
+      source: 'platform',
+      dataQuality: 85,
+      circumstances: 'Saiu da escola sem aviso e não retornou para casa. Câmeras de segurança registraram a última imagem na saída da escola.',
+      consentGiven: true,
+      persons: [{
+        id: 'p1',
+        role: 'missing_child',
+        firstName: 'Maria',
+        lastName: 'Santos',
+        approximateAge: 8,
+        ageAtDisappearance: 8,
+        dateOfBirth: '2018-03-14',
+        gender: 'female',
+        heightCm: 122,
+        weightKg: 25,
+        hairColor: 'Preto',
+        hairLength: 'Médio',
+        eyeColor: 'Castanhos',
+        skinTone: 'Morena',
+        distinguishingMarks: 'Cicatriz pequena no queixo',
+        clothingDescription: 'Uniforme escolar azul e branco, mochila rosa',
+        nationality: ['BR'],
+        aliases: [],
+        languagesSpoken: ['Português'],
+        images: [],
+      }],
+      createdAt: '2026-02-24T00:00:00Z',
+      updatedAt: '2026-02-26T00:00:00Z',
+    },
   }
+
+  return MOCK_CASES[id] ?? null
 }
 
 export async function generateMetadata({ params }: CaseDetailPageProps): Promise<Metadata> {
@@ -140,79 +100,7 @@ const SOURCE_LABELS: Record<string, string> = {
   disque100: 'Disque 100 — Direitos Humanos',
 }
 
-// Fetch sightings for this case
-async function getCaseSightings(caseId: string) {
-  try {
-    const sightings = await db.sighting.findMany({
-      where: { caseId },
-      select: {
-        id: true,
-        description: true,
-        seenAt: true,
-        locationText: true,
-        latitude: true,
-        longitude: true,
-        photoUrl: true,
-        status: true,
-        isAnonymous: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-    })
-    return sightings.map((s) => ({
-      id: s.id,
-      description: s.description,
-      seenAt: s.seenAt?.toISOString() ?? null,
-      locationText: s.locationText,
-      latitude: s.latitude,
-      longitude: s.longitude,
-      photoUrl: s.photoUrl,
-      status: s.status,
-      isAnonymous: s.isAnonymous,
-      createdAt: s.createdAt.toISOString(),
-    }))
-  } catch (err) {
-    logger.error({ err, caseId }, 'getCaseSightings: DB error')
-    return []
-  }
-}
-
-// Fetch face matches for this case
-async function getCaseMatches(caseId: string) {
-  try {
-    const matches = await db.match.findMany({
-      where: { matchedCaseId: caseId },
-      select: {
-        id: true,
-        similarityScore: true,
-        confidenceTier: true,
-        reviewStatus: true,
-        queryImageUrl: true,
-        querySource: true,
-        requestedAt: true,
-        reviewedAt: true,
-      },
-      orderBy: { requestedAt: 'desc' },
-      take: 10,
-    })
-    return matches.map((m) => ({
-      id: m.id,
-      similarityScore: m.similarityScore,
-      confidenceTier: m.confidenceTier,
-      reviewStatus: m.reviewStatus,
-      queryImageUrl: m.queryImageUrl,
-      querySource: m.querySource,
-      requestedAt: m.requestedAt.toISOString(),
-      reviewedAt: m.reviewedAt?.toISOString() ?? null,
-    }))
-  } catch (err) {
-    logger.error({ err, caseId }, 'getCaseMatches: DB error')
-    return []
-  }
-}
-
-// Build timeline from case data + sightings
+// Mock timeline for MVP
 function buildTimeline(caseData: CaseDetail): TimelineEvent[] {
   const events: TimelineEvent[] = [
     {
@@ -245,12 +133,6 @@ export default async function CaseDetailPage({ params }: CaseDetailPageProps) {
 
   const caseData = await getCaseDetail(id)
   if (!caseData) notFound()
-
-  // Fetch related data in parallel
-  const [sightings, matches] = await Promise.all([
-    getCaseSightings(id),
-    getCaseMatches(id),
-  ])
 
   const person = caseData.persons[0]
   const personName = person
@@ -522,25 +404,6 @@ export default async function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           </div>
 
-          {/* AI Analysis — Feature 1 */}
-          <div className="mt-8">
-            <CaseAnalysis caseId={caseData.id} />
-          </div>
-
-          {/* Similar Cases — Feature 3 */}
-          <div
-            className="mt-8 p-6 rounded-xl"
-            style={{ backgroundColor: 'var(--color-bg-primary)', border: '1px solid var(--color-border)' }}
-          >
-            <h2
-              className="text-base font-bold mb-4"
-              style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-deep-indigo)' }}
-            >
-              Casos Similares
-            </h2>
-            <SimilarCases caseId={caseData.id} />
-          </div>
-
           {/* Timeline */}
           <div
             className="mt-8 p-6 rounded-xl"
@@ -592,38 +455,6 @@ export default async function CaseDetailPage({ params }: CaseDetailPageProps) {
               </div>
             </div>
           </div>
-
-          {/* Sightings — Sprint 7 LE-03 */}
-          {sightings.length > 0 && (
-            <div
-              className="mt-8 p-6 rounded-xl"
-              style={{ backgroundColor: 'var(--color-bg-primary)', border: '1px solid var(--color-border)' }}
-            >
-              <h2
-                className="text-base font-bold mb-4"
-                style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-deep-indigo)' }}
-              >
-                Avistamentos Reportados ({sightings.length})
-              </h2>
-              <CaseSightings sightings={sightings} />
-            </div>
-          )}
-
-          {/* Face Matches — Sprint 7 LE-03 */}
-          {matches.length > 0 && (
-            <div
-              className="mt-8 p-6 rounded-xl"
-              style={{ backgroundColor: 'var(--color-bg-primary)', border: '1px solid var(--color-border)' }}
-            >
-              <h2
-                className="text-base font-bold mb-4"
-                style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-deep-indigo)' }}
-              >
-                Correspondencias Faciais ({matches.length})
-              </h2>
-              <CaseMatches matches={matches} />
-            </div>
-          )}
 
           {/* Source attribution */}
           <div

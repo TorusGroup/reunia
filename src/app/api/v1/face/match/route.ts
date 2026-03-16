@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { verifyAccessToken, extractBearerToken } from '@/lib/auth'
+import { can } from '@/lib/rbac'
 import { getIpFromHeaders } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { runFaceMatchPipeline } from '@/services/face/match-pipeline'
@@ -30,44 +31,44 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const ip = getIpFromHeaders(request.headers)
 
   // ---------------------------------------------------------------
-  // Auth — optional for public face search
-  //
-  // Public (anonymous) users can submit face searches with stricter
-  // rate limits (5/min vs 10/min for auth, 30/min for LE).
-  // This is critical for a missing children platform — anyone who
-  // spots a missing child should be able to search.
-  // All matches go through HITL review regardless (NON-NEGOTIABLE).
+  // Auth
   // ---------------------------------------------------------------
   const token = extractBearerToken(request.headers.get('authorization'))
+
+  if (!token) {
+    return NextResponse.json(
+      { success: false, error: { code: ErrorCodes.UNAUTHORIZED, message: 'Authentication required' } },
+      { status: 401 }
+    )
+  }
 
   let userId: string | undefined
   let userRole: UserRole = 'public'
 
-  if (token) {
-    try {
-      const payload = verifyAccessToken(token)
-      userId = payload.sub
-      userRole = payload.role
-    } catch {
-      // Invalid token — proceed as public user rather than rejecting.
-      // A citizen who happens to have an expired cookie should still
-      // be able to search for missing children.
-      logger.debug({ ip }, 'POST /api/v1/face/match: invalid token, proceeding as public')
+  try {
+    const payload = verifyAccessToken(token)
+    userId = payload.sub
+    userRole = payload.role
+
+    // Face match requires at minimum 'volunteer' role (can submit photos)
+    if (!can(payload.role, 'face_match:submit')) {
+      return NextResponse.json(
+        { success: false, error: { code: ErrorCodes.FORBIDDEN, message: 'Access denied' } },
+        { status: 403 }
+      )
     }
+  } catch {
+    return NextResponse.json(
+      { success: false, error: { code: ErrorCodes.INVALID_TOKEN, message: 'Invalid token' } },
+      { status: 401 }
+    )
   }
 
   // ---------------------------------------------------------------
-  // Rate limiting:
-  //   - Public (anonymous): 5 matches per minute
-  //   - Authenticated (volunteer/family): 10 per minute
-  //   - Law enforcement / admin: 30 per minute
+  // Rate limiting: 10 matches per minute for citizens, 30 for LE
   // ---------------------------------------------------------------
   const rateLimit =
-    userRole === 'law_enforcement' || userRole === 'admin'
-      ? 30
-      : userId
-        ? 10
-        : 5
+    userRole === 'law_enforcement' || userRole === 'admin' ? 30 : 10
   const rateKey = `face:match:${userId ?? ip ?? 'anon'}`
   const rateResult = await rateLimitCheck(rateKey, 60, rateLimit)
 
@@ -173,7 +174,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         })),
         hitl_queued: pipelineResult.enqueuedMatchIds.length,
         processing_ms: pipelineResult.processingMs,
-        engine: pipelineResult.engine ?? 'unknown',
         // Reminder visible in all match results
         notice:
           'All matches require human review before family notification. CVV 188 for crisis support.',

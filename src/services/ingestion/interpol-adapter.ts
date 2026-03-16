@@ -89,23 +89,7 @@ export class InterpolAdapter extends BaseAdapter {
       try {
         const url = `${this.baseUrl}?ageMin=0&ageMax=17&resultPerPage=20&page=${currentPage}`
 
-        let response: Response
-        try {
-          // Use shorter retry delays (1s initial) to avoid Railway request timeouts
-          response = await this.fetchWithRetry(url, {}, 2, 1000)
-        } catch (err) {
-          // Interpol blocks datacenter/cloud IPs with 403 Forbidden.
-          // Gracefully return whatever we have instead of crashing.
-          const msg = err instanceof Error ? err.message : String(err)
-          if (msg.includes('403')) {
-            logger.warn(
-              { source: this.sourceId },
-              'Interpol API returned 403 Forbidden — likely blocking cloud IPs. Skipping source.'
-            )
-            return allNotices as RawRecord[]
-          }
-          throw err
-        }
+        const response = await this.fetchWithRetry(url)
         const data = (await response.json()) as InterpolListResponse
 
         const notices = data._embedded?.notices ?? []
@@ -150,7 +134,7 @@ export class InterpolAdapter extends BaseAdapter {
     let detail: InterpolDetailResponse | undefined
     try {
       if (notice._links?.self?.href) {
-        const detailResp = await this.fetchWithRetry(notice._links.self.href, {}, 2, 1000)
+        const detailResp = await this.fetchWithRetry(notice._links.self.href)
         detail = (await detailResp.json()) as InterpolDetailResponse
       }
     } catch (err) {
@@ -164,7 +148,7 @@ export class InterpolAdapter extends BaseAdapter {
     const photoUrls: string[] = []
     try {
       if (notice._links?.images?.href) {
-        const imagesResp = await this.fetchWithRetry(notice._links.images.href, {}, 2, 1000)
+        const imagesResp = await this.fetchWithRetry(notice._links.images.href)
         const imageData = (await imagesResp.json()) as InterpolImageListResponse
         const images = imageData._embedded?.images ?? []
         for (const img of images) {

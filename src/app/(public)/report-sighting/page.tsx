@@ -17,13 +17,7 @@ export const metadata: Metadata = {
   },
 }
 
-interface ReportSightingPageProps {
-  searchParams: Promise<{ caseId?: string }>
-}
-
-export default async function ReportSightingPage({ searchParams }: ReportSightingPageProps) {
-  const { caseId } = await searchParams
-
+export default function ReportSightingPage() {
   return (
     <>
       <Header />
@@ -77,21 +71,7 @@ export default async function ReportSightingPage({ searchParams }: ReportSightin
               boxShadow: 'var(--shadow-elevated)',
             }}
           >
-            <SightingForm defaultCaseId={caseId} />
-          </div>
-
-          {/* Chat alternative */}
-          <div className="mt-6 text-center">
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-              Prefere relatar via conversa?{' '}
-              <a
-                href={`/report-sighting-chat${caseId ? `?caseId=${caseId}` : ''}`}
-                className="font-medium"
-                style={{ color: 'var(--color-coral-hope)' }}
-              >
-                Usar chat guiado
-              </a>
-            </p>
+            <SightingForm />
           </div>
 
           {/* Help numbers */}

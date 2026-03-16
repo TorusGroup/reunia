@@ -5,14 +5,11 @@ import { Footer } from '@/components/layout/footer'
 import { SearchBar } from '@/components/search/search-bar'
 import { CaseCard } from '@/components/search/case-card'
 import { StatCard } from '@/components/common/stat-card'
-import { GuidedTour } from '@/components/tour/guided-tour'
 import type { CaseSummary } from '@/types/cases'
-import { db } from '@/lib/db'
-import { logger } from '@/lib/logger'
 
 // =============================================================
-// Homepage — ReunIA (Sprint 4→5, E5-S01)
-// Server Component: fetches live data from DB, fallback to mock
+// Homepage — ReunIA (Sprint 4, E5-S01)
+// Server Component: static render, no client JS in page itself
 // =============================================================
 
 export const metadata: Metadata = {
@@ -21,152 +18,209 @@ export const metadata: Metadata = {
     'Plataforma aberta de busca de crianças desaparecidas. Busca unificada de FBI, Interpol, NCMEC e fontes brasileiras com reconhecimento facial e alertas geolocalizados.',
 }
 
-// Revalidate every 60 seconds for fresh data
-export const revalidate = 60
+// Mock seed data — Sprint 4 uses static data; Sprint 5 connects to live API
+const RECENT_CASES: CaseSummary[] = [
+  {
+    id: '550e8400-e29b-41d4-a716-446655440001',
+    caseNumber: 'REUNIA-2026-000001',
+    caseType: 'missing',
+    status: 'active',
+    urgency: 'high',
+    reportedAt: '2026-02-24T00:00:00Z',
+    lastSeenAt: '2026-02-24T14:30:00Z',
+    lastSeenLocation: 'São Paulo, SP',
+    lastSeenCountry: 'BR',
+    source: 'platform',
+    dataQuality: 85,
+    persons: [{
+      id: 'p1',
+      role: 'missing_child',
+      firstName: 'Maria',
+      lastName: 'Santos',
+      approximateAge: 8,
+      gender: 'female',
+      primaryImageUrl: undefined,
+    }],
+    createdAt: '2026-02-24T00:00:00Z',
+    updatedAt: '2026-02-24T00:00:00Z',
+  },
+  {
+    id: '550e8400-e29b-41d4-a716-446655440002',
+    caseNumber: 'REUNIA-2026-000002',
+    caseType: 'missing',
+    status: 'active',
+    urgency: 'critical',
+    reportedAt: '2026-02-15T00:00:00Z',
+    lastSeenAt: '2026-02-15T09:00:00Z',
+    lastSeenLocation: 'Rio de Janeiro, RJ',
+    lastSeenCountry: 'BR',
+    source: 'ncmec',
+    dataQuality: 92,
+    persons: [{
+      id: 'p2',
+      role: 'missing_child',
+      firstName: 'João',
+      lastName: 'Pereira',
+      approximateAge: 12,
+      gender: 'male',
+      primaryImageUrl: undefined,
+    }],
+    createdAt: '2026-02-15T00:00:00Z',
+    updatedAt: '2026-02-15T00:00:00Z',
+  },
+  {
+    id: '550e8400-e29b-41d4-a716-446655440003',
+    caseNumber: 'REUNIA-2026-000003',
+    caseType: 'missing',
+    status: 'active',
+    urgency: 'high',
+    reportedAt: '2026-02-25T00:00:00Z',
+    lastSeenAt: '2026-02-25T16:00:00Z',
+    lastSeenLocation: 'Campinas, SP',
+    lastSeenCountry: 'BR',
+    source: 'platform',
+    dataQuality: 78,
+    persons: [{
+      id: 'p3',
+      role: 'missing_child',
+      firstName: 'Ana',
+      lastName: 'Lima',
+      approximateAge: 6,
+      gender: 'female',
+      primaryImageUrl: undefined,
+    }],
+    createdAt: '2026-02-25T00:00:00Z',
+    updatedAt: '2026-02-25T00:00:00Z',
+  },
+  {
+    id: '550e8400-e29b-41d4-a716-446655440004',
+    caseNumber: 'REUNIA-2026-000004',
+    caseType: 'missing',
+    status: 'active',
+    urgency: 'standard',
+    reportedAt: '2026-02-19T00:00:00Z',
+    lastSeenAt: '2026-02-19T11:00:00Z',
+    lastSeenLocation: 'Brasília, DF',
+    lastSeenCountry: 'BR',
+    source: 'fbi',
+    dataQuality: 88,
+    persons: [{
+      id: 'p4',
+      role: 'missing_child',
+      firstName: 'Pedro',
+      lastName: 'Mendes',
+      approximateAge: 14,
+      gender: 'male',
+      primaryImageUrl: undefined,
+    }],
+    createdAt: '2026-02-19T00:00:00Z',
+    updatedAt: '2026-02-19T00:00:00Z',
+  },
+  {
+    id: '550e8400-e29b-41d4-a716-446655440005',
+    caseNumber: 'REUNIA-2026-000005',
+    caseType: 'missing',
+    status: 'active',
+    urgency: 'high',
+    reportedAt: '2026-02-23T00:00:00Z',
+    lastSeenAt: '2026-02-23T08:00:00Z',
+    lastSeenLocation: 'Belo Horizonte, MG',
+    lastSeenCountry: 'BR',
+    source: 'disque100',
+    dataQuality: 80,
+    persons: [{
+      id: 'p5',
+      role: 'missing_child',
+      firstName: 'Luiza',
+      lastName: 'Costa',
+      approximateAge: 10,
+      gender: 'female',
+      primaryImageUrl: undefined,
+    }],
+    createdAt: '2026-02-23T00:00:00Z',
+    updatedAt: '2026-02-23T00:00:00Z',
+  },
+  {
+    id: '550e8400-e29b-41d4-a716-446655440006',
+    caseNumber: 'REUNIA-2026-000006',
+    caseType: 'missing',
+    status: 'active',
+    urgency: 'standard',
+    reportedAt: '2026-02-20T00:00:00Z',
+    lastSeenAt: '2026-02-20T17:30:00Z',
+    lastSeenLocation: 'Salvador, BA',
+    lastSeenCountry: 'BR',
+    source: 'ncmec',
+    dataQuality: 91,
+    persons: [{
+      id: 'p6',
+      role: 'missing_child',
+      firstName: 'Gabriel',
+      lastName: 'Ferreira',
+      approximateAge: 9,
+      gender: 'male',
+      primaryImageUrl: undefined,
+    }],
+    createdAt: '2026-02-20T00:00:00Z',
+    updatedAt: '2026-02-20T00:00:00Z',
+  },
+  {
+    id: '550e8400-e29b-41d4-a716-446655440007',
+    caseNumber: 'REUNIA-2026-000007',
+    caseType: 'missing',
+    status: 'active',
+    urgency: 'high',
+    reportedAt: '2026-02-22T00:00:00Z',
+    lastSeenAt: '2026-02-22T12:00:00Z',
+    lastSeenLocation: 'Fortaleza, CE',
+    lastSeenCountry: 'BR',
+    source: 'platform',
+    dataQuality: 75,
+    persons: [{
+      id: 'p7',
+      role: 'missing_child',
+      firstName: 'Sofia',
+      lastName: 'Alves',
+      approximateAge: 7,
+      gender: 'female',
+      primaryImageUrl: undefined,
+    }],
+    createdAt: '2026-02-22T00:00:00Z',
+    updatedAt: '2026-02-22T00:00:00Z',
+  },
+  {
+    id: '550e8400-e29b-41d4-a716-446655440008',
+    caseNumber: 'REUNIA-2026-000008',
+    caseType: 'missing',
+    status: 'active',
+    urgency: 'standard',
+    reportedAt: '2026-02-18T00:00:00Z',
+    lastSeenAt: '2026-02-18T07:00:00Z',
+    lastSeenLocation: 'Curitiba, PR',
+    lastSeenCountry: 'BR',
+    source: 'amber',
+    dataQuality: 82,
+    persons: [{
+      id: 'p8',
+      role: 'missing_child',
+      firstName: 'Lucas',
+      lastName: 'Oliveira',
+      approximateAge: 11,
+      gender: 'male',
+      primaryImageUrl: undefined,
+    }],
+    createdAt: '2026-02-18T00:00:00Z',
+    updatedAt: '2026-02-18T00:00:00Z',
+  },
+]
 
-// ---------------------------------------------------------------
-// Fetch real cases from the database
-// ---------------------------------------------------------------
-async function getRecentCasesFromDb(): Promise<CaseSummary[]> {
-  try {
-    const cases = await db.case.findMany({
-      where: { status: 'active' },
-      orderBy: [{ reportedAt: 'desc' }],
-      take: 8,
-      select: {
-        id: true,
-        caseNumber: true,
-        caseType: true,
-        status: true,
-        urgency: true,
-        reportedAt: true,
-        lastSeenAt: true,
-        lastSeenLocation: true,
-        lastSeenCountry: true,
-        source: true,
-        dataQuality: true,
-        createdAt: true,
-        updatedAt: true,
-        persons: {
-          where: { role: 'missing_child' },
-          take: 1,
-          select: {
-            id: true,
-            role: true,
-            firstName: true,
-            lastName: true,
-            approximateAge: true,
-            dateOfBirth: true,
-            gender: true,
-            images: {
-              where: { isPrimary: true },
-              take: 1,
-              select: { storageUrl: true, thumbnailUrl: true },
-            },
-          },
-        },
-      },
-    })
-
-    return cases.map((c) => {
-      const person = c.persons[0]
-      const img = person?.images[0]
-
-      // Compute approximate age from DOB if not directly set
-      let approximateAge = person?.approximateAge ?? undefined
-      if (!approximateAge && person?.dateOfBirth) {
-        const ageDiff = Date.now() - person.dateOfBirth.getTime()
-        approximateAge = Math.floor(ageDiff / (1000 * 60 * 60 * 24 * 365.25))
-      }
-
-      return {
-        id: c.id,
-        caseNumber: c.caseNumber,
-        caseType: c.caseType as CaseSummary['caseType'],
-        status: c.status as CaseSummary['status'],
-        urgency: c.urgency as CaseSummary['urgency'],
-        reportedAt: c.reportedAt.toISOString(),
-        lastSeenAt: c.lastSeenAt?.toISOString(),
-        lastSeenLocation: c.lastSeenLocation ?? undefined,
-        lastSeenCountry: c.lastSeenCountry ?? undefined,
-        source: c.source as CaseSummary['source'],
-        dataQuality: c.dataQuality,
-        persons: person
-          ? [
-              {
-                id: person.id,
-                role: person.role as CaseSummary['persons'][number]['role'],
-                firstName: person.firstName ?? undefined,
-                lastName: person.lastName ?? undefined,
-                approximateAge,
-                gender: (person.gender ?? undefined) as CaseSummary['persons'][number]['gender'],
-                primaryImageUrl: img?.thumbnailUrl ?? img?.storageUrl ?? undefined,
-              },
-            ]
-          : [],
-        createdAt: c.createdAt.toISOString(),
-        updatedAt: c.updatedAt.toISOString(),
-      }
-    })
-  } catch (err) {
-    logger.error({ err }, 'Homepage: failed to fetch cases from DB, using mock data')
-    return []
-  }
-}
-
-// ---------------------------------------------------------------
-// Fetch live stats from the database
-// ---------------------------------------------------------------
-async function getStatsFromDb(): Promise<{
-  activeCases: number
-  casesWithPhotos: number
-  sources: number
-  lastSync: Date | null
-}> {
-  try {
-    const [activeCases, casesWithPhotos, distinctSources, lastIngestion] = await Promise.all([
-      db.case.count({ where: { status: 'active' } }),
-      db.case.count({
-        where: {
-          status: 'active',
-          persons: {
-            some: {
-              role: 'missing_child',
-              images: { some: {} },
-            },
-          },
-        },
-      }),
-      db.case.groupBy({ by: ['source'], where: { status: 'active' } }),
-      db.ingestionLog.findFirst({
-        where: { status: 'success' },
-        orderBy: { completedAt: 'desc' },
-        select: { completedAt: true },
-      }),
-    ])
-    return {
-      activeCases,
-      casesWithPhotos,
-      sources: distinctSources.length,
-      lastSync: lastIngestion?.completedAt ?? null,
-    }
-  } catch {
-    return { activeCases: 0, casesWithPhotos: 0, sources: 0, lastSync: null }
-  }
-}
-
-// ---------------------------------------------------------------
-// No mock fallback cases (P-01: Homepage must show real data only)
-// If DB is empty, homepage shows an empty state with a message.
-// Hardcoded mock data was removed to prevent aspirational/fake
-// numbers from appearing on a child safety platform.
-// ---------------------------------------------------------------
-
-// Format number with locale separator (e.g. 50823 -> "50.823")
-function formatNumber(n: number): string {
-  if (n === 0) return '—'
-  return n.toLocaleString('pt-BR')
-}
+// Impact stats
+const STATS = [
+  { value: '50.823', label: 'Casos ativos', sublabel: 'em 4 bases de dados' },
+  { value: '4', label: 'Bancos de dados', sublabel: 'FBI, NCMEC, Interpol, BR' },
+  { value: '1.204', label: 'Alertas enviados', sublabel: 'este mês' },
+  { value: '847', label: 'Encontradas', sublabel: 'este ano' },
+]
 
 // How it works steps
 const HOW_IT_WORKS = [
@@ -205,61 +259,13 @@ const HOW_IT_WORKS = [
   },
 ]
 
-export default async function HomePage() {
-  // Fetch real data from DB (Server Component — runs at request/revalidation time)
-  const [dbCases, dbStats] = await Promise.all([
-    getRecentCasesFromDb(),
-    getStatsFromDb(),
-  ])
-
-  // P-01: Use real DB data only — no mock/hardcoded fallbacks
-  const recentCases = dbCases
-
-  // Format last sync date
-  const lastSyncLabel = dbStats.lastSync
-    ? new Intl.DateTimeFormat('pt-BR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: 'America/Sao_Paulo',
-      }).format(dbStats.lastSync)
-    : null
-
-  // Stats from real database — show actual numbers, never fake ones
-  const stats = [
-    {
-      value: formatNumber(dbStats.activeCases),
-      label: 'Casos ativos',
-      sublabel: 'em bases de dados integradas',
-    },
-    {
-      value: formatNumber(dbStats.casesWithPhotos),
-      label: 'Com foto',
-      sublabel: 'para reconhecimento facial',
-    },
-    {
-      value: dbStats.sources > 0 ? String(dbStats.sources) : '—',
-      label: 'Fontes de dados',
-      sublabel: 'FBI, NCMEC e mais',
-    },
-    {
-      value: lastSyncLabel ?? '—',
-      label: 'Ultima sincronizacao',
-      sublabel: 'dados atualizados automaticamente',
-      mono: false,
-    },
-  ]
-
+export default function HomePage() {
   return (
     <>
       <Header />
-      <GuidedTour autoStart />
       <main id="main-content">
         {/* ── HERO SECTION ─────────────────────────────────────────── */}
         <section
-          data-tour="welcome"
           className="pt-12 pb-16 px-6"
           style={{ backgroundColor: 'var(--color-light-canvas)' }}
           aria-label="Busca principal"
@@ -303,7 +309,7 @@ export default async function HomePage() {
             {/* Secondary CTAs */}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <Link
-                href="/face-search"
+                href="/search?mode=photo"
                 className="inline-flex items-center gap-2 px-5 py-3 rounded-lg text-sm font-semibold transition-all"
                 style={{
                   border: '2px solid var(--color-deep-indigo)',
@@ -332,7 +338,6 @@ export default async function HomePage() {
 
         {/* ── RECENT CASES ─────────────────────────────────────────── */}
         <section
-          data-tour="recent-cases"
           className="py-12 px-6"
           style={{ backgroundColor: 'var(--color-bg-primary)' }}
           aria-labelledby="recent-cases-heading"
@@ -359,57 +364,28 @@ export default async function HomePage() {
             </div>
 
             {/* Desktop: 4-col grid. Mobile: 2-col grid */}
-            {recentCases.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                {recentCases.map((c, idx) => (
-                  <CaseCard key={c.id} caseData={c} priority={idx < 4} />
-                ))}
-              </div>
-            ) : (
-              <div
-                className="text-center py-12 px-6 rounded-xl"
-                style={{
-                  backgroundColor: 'var(--color-bg-secondary)',
-                  border: '1px dashed var(--color-border)',
-                }}
-              >
-                <p
-                  className="text-lg mb-2"
-                  style={{
-                    fontFamily: 'var(--font-heading)',
-                    color: 'var(--color-deep-indigo)',
-                    fontWeight: 300,
-                  }}
-                >
-                  Nenhum caso ativo no momento
-                </p>
-                <p
-                  className="text-sm"
-                  style={{ color: 'var(--color-text-secondary)' }}
-                >
-                  O sistema esta integrando dados de fontes oficiais. Os casos aparecerao aqui assim que estiverem disponiveis.
-                </p>
-              </div>
-            )}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {RECENT_CASES.map((c, idx) => (
+                <CaseCard key={c.id} caseData={c} priority={idx < 4} />
+              ))}
+            </div>
           </div>
         </section>
 
         {/* ── STATS BANNER ─────────────────────────────────────────── */}
         <section
-          data-tour="stats"
           className="py-12 px-6"
           style={{ backgroundColor: 'var(--color-deep-indigo)' }}
           aria-label="Estatísticas de impacto"
         >
           <div className="max-w-5xl mx-auto">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-              {stats.map((stat) => (
+              {STATS.map((stat) => (
                 <StatCard
                   key={stat.label}
                   value={stat.value}
                   label={stat.label}
                   sublabel={stat.sublabel}
-                  mono={'mono' in stat ? (stat.mono as boolean) : true}
                 />
               ))}
             </div>
@@ -472,7 +448,7 @@ export default async function HomePage() {
               Registrar Caso
             </Link>
             <Link
-              href="/geo-alerts"
+              href="/alerts"
               className="inline-flex items-center gap-2 px-8 py-4 rounded-xl font-semibold text-lg transition-all"
               style={{
                 border: '2px solid var(--color-deep-indigo)',

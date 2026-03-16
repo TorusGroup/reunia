@@ -55,10 +55,9 @@ export function Footer() {
             <ul className="space-y-2">
               {[
                 { label: 'Buscar', href: '/search' },
-                { label: 'Registrar Caso', href: '/register-case' },
+                { label: 'Registrar Caso', href: '/dashboard' },
                 { label: 'Reportar Avistamento', href: '/report-sighting' },
-                { label: 'Alertas Geolocalizados', href: '/geo-alerts' },
-                { label: 'Painel Analitico', href: '/analytics' },
+                { label: 'Alertas', href: '/alerts' },
               ].map(({ label, href }) => (
                 <li key={href}>
                   <Link
@@ -78,22 +77,23 @@ export function Footer() {
               className="text-xs uppercase tracking-wider font-semibold mb-4"
               style={{ color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-body)' }}
             >
-              Ajuda
+              Institucional
             </h3>
             <ul className="space-y-2">
               {[
-                { label: 'CVV — 188', href: 'tel:188' },
-                { label: 'Disque 100', href: 'tel:100' },
-                { label: 'Emergência — 190', href: 'tel:190' },
+                { label: 'Sobre', href: '/sobre' },
+                { label: 'Parcerias', href: '/parcerias' },
+                { label: 'Privacidade', href: '/privacidade' },
+                { label: 'Termos', href: '/termos' },
               ].map(({ label, href }) => (
                 <li key={href}>
-                  <a
+                  <Link
                     href={href}
                     className="text-sm transition-colors"
                     style={{ color: 'rgba(255,255,255,0.6)' }}
                   >
                     {label}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -105,18 +105,9 @@ export function Footer() {
           className="pt-6 border-t flex flex-col sm:flex-row items-center justify-between gap-4"
           style={{ borderColor: 'rgba(255,255,255,0.1)' }}
         >
-          <div className="flex items-center gap-3">
-            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
-              © {currentYear} ReunIA. Open source sob licença Apache 2.0.
-            </p>
-            <Link
-              href="/admin"
-              className="text-xs transition-colors"
-              style={{ color: 'rgba(255,255,255,0.25)' }}
-            >
-              Admin
-            </Link>
-          </div>
+          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            © {currentYear} ReunIA. Open source sob licença Apache 2.0.
+          </p>
           <div className="flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
             <span className="text-xs" style={{ fontFamily: 'var(--font-mono)' }}>
               Toda correspondência facial requer revisão humana

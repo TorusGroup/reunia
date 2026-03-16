@@ -22,25 +22,18 @@ interface HitlJobData {
   enqueuedAt: string
 }
 
-// Lazy Queue creation — avoids eager Redis connection during `next build`
-let _hitlQueue: Queue<HitlJobData> | null = null
-function getHitlQueue(): Queue<HitlJobData> {
-  if (!_hitlQueue) {
-    _hitlQueue = new Queue<HitlJobData>(HITL_QUEUE_NAME, {
-      connection: redisQueue,
-      defaultJobOptions: {
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 5000,
-        },
-        removeOnComplete: { count: 500 },
-        removeOnFail: { count: 1000 },
-      },
-    })
-  }
-  return _hitlQueue
-}
+const hitlQueue = new Queue<HitlJobData>(HITL_QUEUE_NAME, {
+  connection: redisQueue,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 5000,
+    },
+    removeOnComplete: { count: 500 },
+    removeOnFail: { count: 1000 },
+  },
+})
 
 // ---------------------------------------------------------------
 // Queue interface
@@ -69,7 +62,7 @@ export const validationQueue = {
 
     const priorityNum = priority === 'high' ? 1 : priority === 'normal' ? 5 : 10
 
-    const job = await getHitlQueue().add(
+    const job = await hitlQueue.add(
       'review-match',
       {
         matchId,
@@ -91,11 +84,11 @@ export const validationQueue = {
    */
   async getStatus(): Promise<QueueStatus> {
     const [waiting, active, completed, failed, delayed] = await Promise.all([
-      getHitlQueue().getWaitingCount(),
-      getHitlQueue().getActiveCount(),
-      getHitlQueue().getCompletedCount(),
-      getHitlQueue().getFailedCount(),
-      getHitlQueue().getDelayedCount(),
+      hitlQueue.getWaitingCount(),
+      hitlQueue.getActiveCount(),
+      hitlQueue.getCompletedCount(),
+      hitlQueue.getFailedCount(),
+      hitlQueue.getDelayedCount(),
     ])
 
     return { waiting, active, completed, failed, delayed }
@@ -117,7 +110,7 @@ export const validationQueue = {
       waitingMs: number
     }>
   > {
-    const jobs = await getHitlQueue().getJobs(['waiting', 'delayed'], offset, offset + limit - 1)
+    const jobs = await hitlQueue.getJobs(['waiting', 'delayed'], offset, offset + limit - 1)
 
     return jobs.map((job) => ({
       id: job.id ?? '',
@@ -133,7 +126,7 @@ export const validationQueue = {
    */
   async remove(matchId: string): Promise<void> {
     try {
-      const job = await getHitlQueue().getJob(`hitl:${matchId}`)
+      const job = await hitlQueue.getJob(`hitl:${matchId}`)
       if (job) {
         await job.remove()
         logger.info({ matchId }, 'HITL: job removed from queue')
@@ -227,11 +220,4 @@ export async function validateMatch(input: ValidateMatchInput): Promise<void> {
 // Export queue instance for monitoring
 // ---------------------------------------------------------------
 
-// Lazy Proxy export for monitoring — avoids eager Redis connection during build
-const IS_BUILD_VQ = process.env.NEXT_PHASE === 'phase-production-build'
-export const hitlQueue: Queue<HitlJobData> = new Proxy({} as Queue<HitlJobData>, {
-  get(_target, prop) {
-    if (IS_BUILD_VQ) return undefined
-    return (getHitlQueue() as unknown as Record<string | symbol, unknown>)[prop]
-  },
-})
+export { hitlQueue }

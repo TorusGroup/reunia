@@ -7,13 +7,16 @@ import type { NextRequest } from 'next/server'
 // =============================================================
 
 // Routes that require authentication
-// NOTE: /register-case and /admin/ingest are open during test mode (no auth system active yet)
 const PROTECTED_ROUTES = [
   '/dashboard',
   '/le-dashboard',
+  '/register-case',
+  '/api/v1/cases',
   '/api/v1/face',
   '/api/v1/alerts/broadcast',
-  '/api/v1/le',
+  '/api/v1/sightings',
+  '/api/v1/ingestion',
+  '/api/v1/admin',
 ]
 
 // Routes that should only be accessible to law_enforcement or admin
@@ -28,13 +31,11 @@ const PUBLIC_ROUTES = [
   '/search',
   '/casos',
   '/report-sighting',
-  '/face-search',
   '/api/v1/cases/search',
   '/api/v1/cases/stats',
   '/api/v1/alerts/subscribe',
   '/api/v1/health',
   '/api/auth',
-  '/api/v1/face/match', // Public face search with tiered rate limits (route handler enforces limits)
 ]
 
 // Allowed origins for CORS
@@ -54,11 +55,11 @@ const SECURITY_HEADERS: Record<string, string> = {
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(self)',
   'Content-Security-Policy': [
     "default-src 'self'",
-    "img-src 'self' data: blob: https://res.cloudinary.com https://api.missingkids.org https://www.missingkids.org https://www.fbi.gov https://*.fbi.gov https://ws-public.interpol.int",
-    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+    "img-src 'self' data: blob: https://res.cloudinary.com",
+    "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
-    "connect-src 'self' http://localhost:* https://api.reunia.org https://*.railway.app",
+    "connect-src 'self' http://localhost:* https://api.reunia.org",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -187,10 +188,10 @@ export function middleware(request: NextRequest): NextResponse {
     // the authentication gate; authorization is handled in route handlers.
   }
 
-  // Add request ID for tracing (S-04: crypto.randomUUID instead of Math.random)
+  // Add request ID for tracing
   const requestId =
     request.headers.get('x-request-id') ??
-    crypto.randomUUID()
+    `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 
   // Build response with security headers
   const response = NextResponse.next({

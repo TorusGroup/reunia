@@ -1,15 +1,11 @@
-'use client'
-
 // =============================================================
 // CaseCard — Case card for homepage grid and search results
 // 280x360px, photo 1:1, status badge, days missing counter
 // Sprint 4, E5
 // =============================================================
 
-import { useCallback, useState } from 'react'
 import Link from 'next/link'
 import type { CaseSummary, PersonSummary } from '@/types/cases'
-import { AvatarPlaceholder } from '@/components/common/avatar-placeholder'
 
 // Compute days missing from lastSeenAt
 function daysMissing(lastSeenAt?: string): number | null {
@@ -40,17 +36,11 @@ interface CaseCardProps {
 
 export function CaseCard({ caseData, priority = false }: CaseCardProps) {
   const person = caseData.persons[0]
-  const [imgBroken, setImgBroken] = useState(false)
-
-  const handleImageError = useCallback(() => {
-    setImgBroken(true)
-  }, [])
-
   if (!person) return null
 
   const { name, age } = getPersonDisplay(person)
   const days = daysMissing(caseData.lastSeenAt)
-  const hasPhoto = !!person.primaryImageUrl && !imgBroken
+  const hasPhoto = !!person.primaryImageUrl
 
   const statusLabels: Record<string, string> = {
     active: 'ATIVO',
@@ -96,10 +86,27 @@ export function CaseCard({ caseData, priority = false }: CaseCardProps) {
             alt={`Foto de ${name}`}
             className="w-full h-full object-cover object-top transition-transform duration-300 group-hover:scale-105"
             loading={priority ? 'eager' : 'lazy'}
-            onError={handleImageError}
           />
         ) : (
-          <AvatarPlaceholder name={name} size="full" />
+          /* Silhouette fallback per wireframe */
+          <div className="w-full h-full flex items-center justify-center">
+            <svg
+              width="80"
+              height="100"
+              viewBox="0 0 80 100"
+              fill="none"
+              aria-label="Sem foto disponível"
+            >
+              <circle cx="40" cy="28" r="18" fill="#D1D5DB" />
+              <path
+                d="M6 88c0-18.778 15.222-34 34-34s34 15.222 34 34"
+                stroke="#D1D5DB"
+                strokeWidth="4"
+                strokeLinecap="round"
+                fill="none"
+              />
+            </svg>
+          </div>
         )}
 
         {/* Status badge overlay */}
